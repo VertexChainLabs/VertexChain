@@ -57,7 +57,7 @@ spec:
 
           containers:
             - name: report-generator
-              image: ghcr.io/pinspace-org/vertexchain-reports:latest
+              image: ghcr.io/vertexchainlabs/vertexchain-reports:latest
               imagePullPolicy: Always
               command:
                 - sh

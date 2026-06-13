@@ -22,7 +22,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: ghcr.io/pinspace-org/vertexchain-backend:latest
+          image: ghcr.io/vertexchainlabs/vertexchain-backend:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000

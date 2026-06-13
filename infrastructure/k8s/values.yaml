@@ -21,7 +21,7 @@ backend:
   enabled: true
 
   image:
-    repository: ghcr.io/pinspace-org/vertexchain
+    repository: ghcr.io/vertexchainlabs/vertexchain
     tag: ""          # defaults to .Chart.AppVersion when empty
     pullPolicy: IfNotPresent
 
@@ -111,7 +111,7 @@ analytics:
   enabled: true
 
   image:
-    repository: ghcr.io/pinspace-org/vertexchain-analytics
+    repository: ghcr.io/vertexchainlabs/vertexchain-analytics
     tag: ""
     pullPolicy: IfNotPresent
 

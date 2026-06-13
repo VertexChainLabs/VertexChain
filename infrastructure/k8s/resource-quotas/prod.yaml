@@ -98,7 +98,7 @@ spec:
           annotations:
             summary: "Prod CPU request quota above 70 %"
             description: "vertexchain-prod CPU requests at {{ $value | humanizePercentage }}. Consider raising quota or scaling down workloads."
-            runbook_url: "https://github.com/PinSpace-Org/VertexChain/wiki/runbooks/quota-cpu"
+            runbook_url: "https://github.com/VertexChainLabs/VertexChain/wiki/runbooks/quota-cpu"
 
         - alert: ProdCpuRequestQuotaCritical
           expr: |
@@ -111,7 +111,7 @@ spec:
           annotations:
             summary: "Prod CPU request quota above 90 % -- scheduling risk"
             description: "vertexchain-prod CPU requests at {{ $value | humanizePercentage }}. New pods may fail to schedule."
-            runbook_url: "https://github.com/PinSpace-Org/VertexChain/wiki/runbooks/quota-cpu"
+            runbook_url: "https://github.com/VertexChainLabs/VertexChain/wiki/runbooks/quota-cpu"
 
         - alert: ProdMemoryRequestQuotaHigh
           expr: |
@@ -124,7 +124,7 @@ spec:
           annotations:
             summary: "Prod memory request quota above 70 %"
             description: "vertexchain-prod memory requests at {{ $value | humanizePercentage }}."
-            runbook_url: "https://github.com/PinSpace-Org/VertexChain/wiki/runbooks/quota-memory"
+            runbook_url: "https://github.com/VertexChainLabs/VertexChain/wiki/runbooks/quota-memory"
 
         - alert: ProdMemoryRequestQuotaCritical
           expr: |
@@ -137,7 +137,7 @@ spec:
           annotations:
             summary: "Prod memory request quota above 90 %"
             description: "vertexchain-prod memory requests at {{ $value | humanizePercentage }}. OOM evictions and scheduling failures imminent."
-            runbook_url: "https://github.com/PinSpace-Org/VertexChain/wiki/runbooks/quota-memory"
+            runbook_url: "https://github.com/VertexChainLabs/VertexChain/wiki/runbooks/quota-memory"
 
         - alert: ProdPodCountQuotaHigh
           expr: |
@@ -162,7 +162,7 @@ spec:
           annotations:
             summary: "Prod storage quota above 70 %"
             description: "Storage quota in vertexchain-prod at {{ $value | humanizePercentage }}."
-            runbook_url: "https://github.com/PinSpace-Org/VertexChain/wiki/runbooks/quota-storage"
+            runbook_url: "https://github.com/VertexChainLabs/VertexChain/wiki/runbooks/quota-storage"
 
         - alert: ProdQuotaExceeded
           expr: |
@@ -176,4 +176,4 @@ spec:
           annotations:
             summary: "PROD quota hard limit hit for {{ $labels.resource }}"
             description: "Resource {{ $labels.resource }} has reached its hard quota in vertexchain-prod. Pod/PVC creation is being rejected RIGHT NOW."
-            runbook_url: "https://github.com/PinSpace-Org/VertexChain/wiki/runbooks/quota-exceeded"
+            runbook_url: "https://github.com/VertexChainLabs/VertexChain/wiki/runbooks/quota-exceeded"
