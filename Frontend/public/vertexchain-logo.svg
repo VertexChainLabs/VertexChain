@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <linearGradient id="v-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="50%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#a78bfa"/>
+    </linearGradient>
+    <linearGradient id="v-grad-dark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#818cf8"/>
+      <stop offset="50%" stop-color="#a78bfa"/>
+      <stop offset="100%" stop-color="#c4b5fd"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Outer ring (chain connection) -->
+  <circle cx="100" cy="100" r="88" stroke="url(#v-grad)" stroke-width="3" fill="none" opacity="0.3"/>
+
+  <!-- Orbit path -->
+  <path d="M 30 100 A 70 70 0 0 1 170 100 A 70 70 0 0 1 30 100" stroke="url(#v-grad)" stroke-width="1.5" fill="none" opacity="0.2" stroke-dasharray="4 6"/>
+
+  <!-- Central node (brightest) -->
+  <circle cx="100" cy="100" r="22" fill="url(#v-grad)" filter="url(#glow)"/>
+  <circle cx="100" cy="100" r="16" fill="#ffffff" opacity="0.9"/>
+
+  <!-- Central 'V' letterform -->
+  <path d="M88 112 L100 86 L112 112" stroke="url(#v-grad)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- Orbital nodes connected by chain links -->
+  <!-- Node 1 - top -->
+  <circle cx="100" cy="36" r="12" fill="#818cf8" filter="url(#glow)"/>
+  <circle cx="100" cy="36" r="7" fill="#ffffff" opacity="0.8"/>
+
+  <!-- Node 2 - top-right -->
+  <circle cx="150" cy="70" r="12" fill="#8b5cf6" filter="url(#glow)"/>
+  <circle cx="150" cy="70" r="7" fill="#ffffff" opacity="0.8"/>
+
+  <!-- Node 3 - bottom-right -->
+  <circle cx="150" cy="130" r="12" fill="#a78bfa" filter="url(#glow)"/>
+  <circle cx="150" cy="130" r="7" fill="#ffffff" opacity="0.8"/>
+
+  <!-- Node 4 - bottom -->
+  <circle cx="100" cy="164" r="12" fill="#8b5cf6" filter="url(#glow)"/>
+  <circle cx="100" cy="164" r="7" fill="#ffffff" opacity="0.8"/>
+
+  <!-- Node 5 - bottom-left -->
+  <circle cx="50" cy="130" r="12" fill="#818cf8" filter="url(#glow)"/>
+  <circle cx="50" cy="130" r="7" fill="#ffffff" opacity="0.8"/>
+
+  <!-- Node 6 - top-left -->
+  <circle cx="50" cy="70" r="12" fill="#8b5cf6" filter="url(#glow)"/>
+  <circle cx="50" cy="70" r="7" fill="#ffffff" opacity="0.8"/>
+
+  <!-- Chain links connecting nodes -->
+  <line x1="100" y1="36" x2="150" y2="70" stroke="url(#v-grad)" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+  <line x1="150" y1="70" x2="150" y2="130" stroke="url(#v-grad)" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+  <line x1="150" y1="130" x2="100" y2="164" stroke="url(#v-grad)" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+  <line x1="100" y1="164" x2="50" y2="130" stroke="url(#v-grad)" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+  <line x1="50" y1="130" x2="50" y2="70" stroke="url(#v-grad)" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+  <line x1="50" y1="70" x2="100" y2="36" stroke="url(#v-grad)" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+
+  <!-- Inner connections to center -->
+  <line x1="100" y1="36" x2="100" y2="78" stroke="url(#v-grad)" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/>
+  <line x1="150" y1="70" x2="122" y2="88" stroke="url(#v-grad)" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/>
+  <line x1="150" y1="130" x2="115" y2="112" stroke="url(#v-grad)" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/>
+  <line x1="100" y1="164" x2="100" y2="122" stroke="url(#v-grad)" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/>
+  <line x1="50" y1="130" x2="85" y2="112" stroke="url(#v-grad)" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/>
+  <line x1="50" y1="70" x2="78" y2="88" stroke="url(#v-grad)" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/>
+
+  <!-- Small particle dots on orbits -->
+  <circle cx="80" cy="42" r="2" fill="#6366f1" opacity="0.5"/>
+  <circle cx="145" cy="52" r="2.5" fill="#8b5cf6" opacity="0.6"/>
+  <circle cx="162" cy="100" r="2" fill="#a78bfa" opacity="0.5"/>
+  <circle cx="140" cy="155" r="2.5" fill="#8b5cf6" opacity="0.6"/>
+  <circle cx="60" cy="155" r="2" fill="#818cf8" opacity="0.5"/>
+  <circle cx="38" cy="100" r="2.5" fill="#a78bfa" opacity="0.6"/>
+  <circle cx="55" cy="52" r="2" fill="#6366f1" opacity="0.5"/>
+  <circle cx="120" cy="170" r="1.5" fill="#c4b5fd" opacity="0.4"/>
+</svg>

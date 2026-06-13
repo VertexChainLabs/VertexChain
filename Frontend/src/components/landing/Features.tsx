@@ -110,7 +110,7 @@ export const Features: React.FC = () => {
                 y={centerY}
                 className="text-white w-16 h-16 sm:w-20 sm:h-20 text-sm font-bold"
               >
-                <Image src="/vertexchain-header-logo.png" alt="VertexChain Icon" width={80} height={80} className="object-contain" priority />
+                <Image src="/vertexchain-logo.svg" alt="VertexChain Icon" width={80} height={80} className="object-contain" priority />
               </Circle>
 
               {icons.map(({ Icon, color, x, y, px, py }, index) => (
