@@ -65,9 +65,12 @@ export class SorobanService {
   async postGist(
     locationCell: string,
     contentHash: string,
-    _author?: string,
+    author?: string,
   ): Promise<PostGistResult> {
     if (this.mockMode) {
+      void locationCell;
+      void contentHash;
+      void author;
       await this.simulateDelay();
       const gistId = String(Date.now());
       const txHash = `mock_tx_${randomBytes(16).toString('hex')}`;

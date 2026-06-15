@@ -47,7 +47,7 @@ function ChangeView({
   const map = useMap();
   useEffect(() => {
     map.flyTo(center, zoom);
-  }, [center]);
+  }, [map, center, zoom]);
   return null;
 }
 

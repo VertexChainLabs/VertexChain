@@ -1,11 +1,9 @@
 'use client';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   DIMENSIONS,
   METRICS,
   FILTER_OPS,
-  nextFilterId,
-  nextQueryId,
   type Dimension,
   type Metric,
   type FilterOp,
@@ -26,6 +24,8 @@ export default function QueryBuilder({
   const [selectedMetrics, setSelectedMetrics] = useState<Metric[]>(['Count']);
   const [filters, setFilters] = useState<QueryFilter[]>([]);
   const [saveName, setSaveName] = useState('');
+  const filterIdRef = useRef(1);
+  const queryIdRef = useRef(1);
 
   function toggleDimension(d: Dimension) {
     setSelectedDimensions((prev) =>
@@ -42,7 +42,7 @@ export default function QueryBuilder({
   function addFilter() {
     setFilters((prev) => [
       ...prev,
-      { id: nextFilterId++, dimension: 'Date', op: 'Equals', value: '' },
+      { id: filterIdRef.current++, dimension: 'Date', op: 'Equals', value: '' },
     ]);
   }
 
@@ -62,7 +62,7 @@ export default function QueryBuilder({
     const name = saveName.trim();
     if (!name) return;
     const query: SavedQuery = {
-      id: nextQueryId++,
+      id: queryIdRef.current++,
       name,
       dimensions: selectedDimensions,
       metrics: selectedMetrics,

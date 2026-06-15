@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import Header from "@/components/layout/Header";
+import { Header } from "@/components/layout/Header";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,8 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "VertexChain -
-    Hyperlocal Micro-Messaging",
+  title: "VertexChain - Hyperlocal Micro-Messaging",
   description: "VertexChain - Anonymous, location-aware micro-messaging on Stellar",
 };
 
