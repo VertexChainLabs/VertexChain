@@ -41,7 +41,8 @@ jobs:
     name: Contracts (Rust / Soroban)
     runs-on: ubuntu-latest
     defaults:
-      working-directory: contracts
+      run:
+        working-directory: contracts
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -82,7 +83,8 @@ jobs:
     name: Backend (NestJS)
     runs-on: ubuntu-latest
     defaults:
-      working-directory: Backend
+      run:
+        working-directory: Backend
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -111,7 +113,8 @@ jobs:
     name: Frontend (Next.js)
     runs-on: ubuntu-latest
     defaults:
-      working-directory: Frontend
+      run:
+        working-directory: Frontend
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -138,7 +141,8 @@ jobs:
     name: Analytics (Next.js)
     runs-on: ubuntu-latest
     defaults:
-      working-directory: analytics
+      run:
+        working-directory: analytics
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -166,7 +170,8 @@ jobs:
     name: Terraform fmt
     runs-on: ubuntu-latest
     defaults:
-      working-directory: infrastructure/terraform
+      run:
+        working-directory: infrastructure/terraform
     steps:
       - name: Checkout
         uses: actions/checkout@v4
