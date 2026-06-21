@@ -146,7 +146,7 @@ pub fn create_proposal(
     proposer.require_auth();
 
     // Validate input string lengths
-    if config_key.len() > MAX_CONFIG_STRING_LENGTH || config_key.len() == 0 {
+    if config_key.len() > MAX_CONFIG_STRING_LENGTH || config_key.is_empty() {
         panic_with_error!(env, GovernanceError::InvalidInput);
     }
     if config_value.len() > MAX_CONFIG_STRING_LENGTH {
@@ -328,7 +328,7 @@ impl GovernanceContract {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::testutils::{Address as _, Ledger};
+    use soroban_sdk::testutils::Address as _;
     use soroban_sdk::{Address, Env, String};
 
     #[test]
@@ -339,12 +339,11 @@ mod tests {
         let contract_id = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &contract_id);
 
-        client.initialize(&admin, 2);
+        client.initialize(&admin, &2);
         assert_eq!(client.get_admin(), admin);
     }
 
-    #[test]
-    #[should_panic(expected = "AlreadyInitialized")]
+    #[test]    #[should_panic(expected = "Error(Contract, #2)")]  
     fn test_cannot_initialize_twice() {
         let env = Env::default();
         let admin = Address::generate(&env);
@@ -352,8 +351,8 @@ mod tests {
         let contract_id = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &contract_id);
 
-        client.initialize(&admin, 2);
-        client.initialize(&admin, 2);
+        client.initialize(&admin, &2);
+        client.initialize(&admin, &2);
     }
 
     #[test]
@@ -369,17 +368,17 @@ mod tests {
         let contract_id = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &contract_id);
 
-        client.initialize(&admin, 2);
+        client.initialize(&admin, &2);
 
         let config_key = String::from_str(&env, "test_key");
         let config_value = String::from_str(&env, "test_value");
 
-        let proposal_id = client.create_proposal(&proposer, &config_key, &config_value, 1000);
+        let proposal_id = client.create_proposal(&proposer, &config_key, &config_value, &1000);
 
-        client.vote_proposal(&voter1, proposal_id);
-        client.vote_proposal(&voter2, proposal_id);
+        client.vote_proposal(&voter1, &proposal_id);
+        client.vote_proposal(&voter2, &proposal_id);
 
-        client.execute_proposal(&admin, proposal_id);
+        client.execute_proposal(&admin, &proposal_id);
 
         let retrieved_config = client.get_config(&config_key);
         assert_eq!(retrieved_config, Some(config_value));
