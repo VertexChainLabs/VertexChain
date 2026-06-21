@@ -8,6 +8,20 @@ jobs:
   quality-gates:
     name: Code Quality Gates
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:15-3.4
+        env:
+          POSTGRES_USER: gist
+          POSTGRES_PASSWORD: gist
+          POSTGRES_DB: gist
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U gist -d gist"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
     steps:
       - uses: actions/checkout@v4
 
@@ -21,6 +35,28 @@ jobs:
       - name: Install dependencies
         run: npm ci
         working-directory: Backend
+
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 30); do
+            if pg_isready -h localhost -p 5432 -U gist -d gist; then
+              echo "Postgres is ready."
+              exit 0
+            fi
+            echo "Waiting for Postgres ($i/30)..."
+            sleep 2
+          done
+          echo "::error::Postgres service did not become ready in time."
+          exit 1
+
+      - name: Entity-migration drift check
+        env:
+          DATABASE_HOST: localhost
+          DATABASE_PORT: 5432
+          DATABASE_USER: gist
+          DATABASE_PASSWORD: gist
+          DATABASE_NAME: gist
+        run: bash infrastructure/ci/scripts/check-migrations.sh
 
       - name: Lint check
         run: npm run lint

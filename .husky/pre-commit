@@ -1,1 +1,71 @@
-cd Backend && npx lint-staged
+#!/usr/bin/env sh
+# VertexChain multi-workspace pre-commit hook.
+#
+# Runs lint-staged in parallel for Backend, Frontend, and analytics.
+# Invokes `cargo check` for contracts only when a staged file matches
+# contracts/**/*.rs. Reports errors from every workspace and exits
+# non-zero if any check fails.
+
+. "$(dirname -- "$0")/_/husky.sh" 2>/dev/null || true
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null)
+
+# Early exit: nothing relevant is staged.
+if [ -z "$STAGED" ] \
+   || ! printf '%s\n' "$STAGED" | grep -qE '^(Backend|Frontend|analytics|contracts)/'; then
+  exit 0
+fi
+
+RESULTS=$(mktemp -d)
+trap 'rm -rf "$RESULTS"' EXIT
+
+# Run lint-staged in a workspace. Skips when no files are staged in it.
+run_workspace() {
+  ws=$1
+  if ! printf '%s\n' "$STAGED" | grep -qE "^${ws}/"; then
+    return
+  fi
+  echo "==> ${ws} (lint-staged)"
+  (cd "${ws}" && npx lint-staged) >"${RESULTS}/${ws}.log" 2>&1 \
+    && touch "${RESULTS}/${ws}.ok"
+}
+
+# Run cargo check in contracts only when .rs files are staged.
+run_contracts() {
+  if ! printf '%s\n' "$STAGED" | grep -qE '^contracts/.*\.rs$'; then
+    return
+  fi
+  echo "==> contracts (cargo check)"
+  (cd contracts && cargo check) >"${RESULTS}/contracts.log" 2>&1 \
+    && touch "${RESULTS}/contracts.ok"
+}
+
+# Fire all relevant checks in parallel. Each subshell writes to its own
+# log file and creates a ".ok" sentinel on success.
+run_workspace "Backend"  & PID_BACKEND=$!
+run_workspace "Frontend" & PID_FRONTEND=$!
+run_workspace "analytics" & PID_ANALYTICS=$!
+run_contracts           & PID_CONTRACTS=$!
+
+# Wait for all checks. A failure in one workspace does NOT stop others.
+FAIL=0
+wait $PID_BACKEND  || FAIL=1
+wait $PID_FRONTEND || FAIL=1
+wait $PID_ANALYTICS || FAIL=1
+wait $PID_CONTRACTS || FAIL=1
+
+if [ "$FAIL" -ne 0 ]; then
+  echo
+  echo "Pre-commit checks failed. Output from failed workspaces:"
+  for ws in Backend Frontend analytics contracts; do
+    log="${RESULTS}/${ws}.log"
+    if [ -f "${log}" ] && [ ! -f "${RESULTS}/${ws}.ok" ]; then
+      echo
+      echo "=== ${ws} ==="
+      cat "${log}"
+    fi
+  done
+  exit 1
+fi
+
+exit 0
