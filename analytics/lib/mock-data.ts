@@ -13,7 +13,7 @@ import type {
   PlatformUsage,
   ScatterPoint,
   ScatterCategory,
-} from '@/types/analytics';
+} from '../types/analytics';
 
 const LOCATIONS = ['Lagos', 'Abuja', 'Kano', 'Ibadan', 'Port Harcourt', 'Enugu', 'Kaduna'];
 const SCATTER_CATEGORIES: ScatterCategory[] = ['Tech', 'Finance', 'AI', 'Web3'];

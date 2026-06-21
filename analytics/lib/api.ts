@@ -6,8 +6,8 @@ import type {
   PlatformUsage,
   ScatterPoint,
   ApiResult,
-} from '@/types/analytics';
-import { processLargeDataset } from '@/lib/compression';
+} from '../types/analytics';
+import { processLargeDataset } from './compression';
 import {
   mockGistStats,
   mockUserGrowth,
@@ -15,7 +15,7 @@ import {
   mockPlatformUsage,
   mockScatterData,
   mockLocationData,
-} from '@/lib/mock-data';
+} from './mock-data';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
 
