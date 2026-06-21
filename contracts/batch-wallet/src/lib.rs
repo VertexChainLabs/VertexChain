@@ -241,12 +241,12 @@ impl BatchWalletContract {
     ) -> BatchCreateResult {
         require_admin(&env, &caller);
 
-        if requests.len() == 0 {
+        if requests.is_empty() {
             panic_with_error!(&env, BatchWalletError::EmptyBatch);
         }
 
         let batch_id = get_total_batches(&env) + 1;
-        BatchWalletEvents::batch_started(&env, batch_id, requests.len() as u32);
+        BatchWalletEvents::batch_started(&env, batch_id, requests.len());
 
         let mut results = Vec::new(&env);
         let mut successful: u32 = 0;
@@ -302,7 +302,7 @@ impl BatchWalletContract {
         BatchWalletEvents::batch_completed(&env, batch_id, successful, failed);
 
         BatchCreateResult {
-            total_requests: requests.len() as u32,
+            total_requests: requests.len(),
             successful,
             failed,
             results,
@@ -316,12 +316,12 @@ impl BatchWalletContract {
     ) -> BatchRecoveryResult {
         require_admin(&env, &caller);
 
-        if requests.len() == 0 {
+        if requests.is_empty() {
             panic_with_error!(&env, BatchWalletError::EmptyBatch);
         }
 
         let batch_id = get_total_batches(&env) + 1;
-        BatchWalletEvents::batch_started(&env, batch_id, requests.len() as u32);
+        BatchWalletEvents::batch_started(&env, batch_id, requests.len());
 
         let mut results = Vec::new(&env);
         let mut successful: u32 = 0;
@@ -391,7 +391,7 @@ impl BatchWalletContract {
         BatchWalletEvents::batch_completed(&env, batch_id, successful, failed);
 
         BatchRecoveryResult {
-            total_requests: requests.len() as u32,
+            total_requests: requests.len(),
             successful,
             failed,
             results,
@@ -402,7 +402,7 @@ impl BatchWalletContract {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::testutils::{Address as _, Events as _, Ledger};
+    use soroban_sdk::testutils::{Address as _, Ledger};
     use soroban_sdk::{Address, Env, Vec};
 
     fn setup_test_env() -> (Env, Address, BatchWalletContractClient<'static>) {
@@ -446,9 +446,10 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "AlreadyInitialized")]
+    // BatchWalletError::AlreadyInitialized = 2 (`#[repr(u32)]`) — keep in sync if enum is reordered.
+    #[should_panic(expected = "Error(Contract, #2)")]
     fn test_cannot_initialize_twice() {
-        let (env, admin, client) = setup_test_env();
+        let (env, _admin, client) = setup_test_env();
 
         let new_admin = Address::generate(&env);
         client.initialize(&new_admin);
@@ -531,7 +532,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "DuplicateWallet")]
+    // BatchWalletError::DuplicateWallet = 7 (`#[repr(u32)]`) — keep in sync if enum is reordered.
+    #[should_panic(expected = "Error(Contract, #7)")]
     fn test_batch_create_wallets_duplicate_in_batch() {
         let (env, admin, client) = setup_test_env();
 

@@ -343,7 +343,9 @@ mod tests {
         assert_eq!(client.get_admin(), admin);
     }
 
-    #[test]    #[should_panic(expected = "Error(Contract, #2)")]  
+    #[test]
+    // MultiSigError::AlreadyInitialized = 2 (`#[repr(u32)]`) — keep in sync if enum is reordered.
+    #[should_panic(expected = "Error(Contract, #2)")]
     fn test_cannot_initialize_twice() {
         let env = Env::default();
         let admin = Address::generate(&env);

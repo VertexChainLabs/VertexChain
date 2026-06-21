@@ -1,3 +1,5 @@
+import type * as XLSXTypes from 'xlsx';
+
 import { categories, generateGistData } from '@/lib/utils';
 
 type CellValue = string | number;
@@ -39,7 +41,7 @@ function buildFilename() {
   return `vertexchain-analytics-${timestamp}.xlsx`;
 }
 
-function setColumnWidths(sheet: import('xlsx').WorkSheet, rows: CellValue[][]) {
+function setColumnWidths(sheet: XLSXTypes.WorkSheet, rows: CellValue[][]) {
   const widths = rows[0].map((_, columnIndex) => {
     const max = rows.reduce((current, row) => {
       const value = row[columnIndex] == null ? '' : String(row[columnIndex]);
@@ -52,7 +54,7 @@ function setColumnWidths(sheet: import('xlsx').WorkSheet, rows: CellValue[][]) {
   sheet['!cols'] = widths;
 }
 
-function styleHeaderRow(sheet: import('xlsx').WorkSheet, columnCount: number, utils: import('xlsx').Utils) {
+function styleHeaderRow(sheet: XLSXTypes.WorkSheet, columnCount: number, utils: typeof XLSXTypes.utils) {
   for (let index = 0; index < columnCount; index += 1) {
     const cellRef = utils.encode_cell({ c: index, r: 0 });
     const cell = sheet[cellRef];
@@ -136,7 +138,7 @@ function createOverviewRows(
   ];
 }
 
-function rowsToSheet(name: string, rows: CellValue[][], utils: import('xlsx').Utils) {
+function rowsToSheet(name: string, rows: CellValue[][], utils: typeof XLSXTypes.utils) {
   const sheet = utils.aoa_to_sheet(rows);
 
   setColumnWidths(sheet, rows);

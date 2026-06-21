@@ -166,7 +166,7 @@ pub fn ensure_multisig_configured(env: &Env) {
     let signers = get_signers(env);
     let threshold = get_threshold(env);
 
-    if signers.len() == 0 || threshold == 0 || threshold > signers.len() {
+    if signers.is_empty() || threshold == 0 || threshold > signers.len() {
         panic_with_error!(env, MultiSigError::MultisigNotConfigured);
     }
 }
@@ -238,7 +238,7 @@ pub fn record_approval(env: &Env, tx_id: u64, signer: &Address) -> u32 {
 fn validate_signer_config(env: &Env, signers: &Vec<Address>, threshold: u32) {
     let signer_count = signers.len();
 
-    if signer_count == 0 || threshold == 0 || threshold > signer_count {
+    if signers.is_empty() || threshold == 0 || threshold > signer_count {
         panic_with_error!(env, MultiSigError::InvalidThreshold);
     }
 
@@ -388,8 +388,8 @@ impl MultisigContract {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::testutils::{Address as _, Ledger};
-    use soroban_sdk::{symbol_short, Address, Env};
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::{Address, Env};
 
     #[test]
     fn test_initialize() {
@@ -404,7 +404,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "AlreadyInitialized")]
+    // MultiSigError::AlreadyInitialized = 2 (`#[repr(u32)]`) — keep in sync if enum is reordered.
+    #[should_panic(expected = "Error(Contract, #2)")]
     fn test_cannot_initialize_twice() {
         let env = Env::default();
         let admin = Address::generate(&env);
@@ -434,7 +435,7 @@ mod tests {
         signers.push_back(signer1.clone());
         signers.push_back(signer2.clone());
 
-        client.set_signers(&admin, &signers, 2);
+        client.set_signers(&admin, &signers, &2);
 
         let retrieved_signers = client.get_signers();
         assert_eq!(retrieved_signers.len(), 2);
