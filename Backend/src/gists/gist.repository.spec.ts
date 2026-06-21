@@ -11,7 +11,7 @@ type GistWithCoords = Gist & { lat: number; lon: number; distance_meters?: numbe
 // Skip the integration suite in CI; run it locally with a real DB or via `npm run test:e2e`.
 const describeIntegration = process.env.CI ? describe.skip : describe;
 
-describeIntegration('GistRepository (integration)', () => {  
+describeIntegration('GistRepository (integration)', () => {
   let repository: GistRepository;
   let module: TestingModule;
 

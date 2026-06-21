@@ -1,6 +1,4 @@
-// sanitize-html ships as a CommonJS export-assignment; use require-import so it
-// resolves under tsconfig without esModuleInterop.
-import sanitizeHtml = require('sanitize-html');
+import * as sanitizeHtml from 'sanitize-html';
 
 /**
  * Strip all HTML from a string so the result is safe, inert plain text.
