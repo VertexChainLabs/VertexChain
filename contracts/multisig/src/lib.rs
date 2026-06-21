@@ -395,10 +395,10 @@ mod tests {
     fn test_initialize() {
         let env = Env::default();
         let admin = Address::generate(&env);
-        
+
         let contract_id = env.register(MultisigContract, ());
         let client = MultisigContractClient::new(&env, &contract_id);
-        
+
         client.initialize(&admin);
         assert_eq!(client.get_admin(), admin);
     }
@@ -408,10 +408,10 @@ mod tests {
     fn test_cannot_initialize_twice() {
         let env = Env::default();
         let admin = Address::generate(&env);
-        
+
         let contract_id = env.register(MultisigContract, ());
         let client = MultisigContractClient::new(&env, &contract_id);
-        
+
         client.initialize(&admin);
         client.initialize(&admin);
     }
@@ -420,22 +420,22 @@ mod tests {
     fn test_set_signers() {
         let env = Env::default();
         env.mock_all_auths();
-        
+
         let admin = Address::generate(&env);
         let signer1 = Address::generate(&env);
         let signer2 = Address::generate(&env);
-        
+
         let contract_id = env.register(MultisigContract, ());
         let client = MultisigContractClient::new(&env, &contract_id);
-        
+
         client.initialize(&admin);
-        
+
         let mut signers = Vec::new(&env);
         signers.push_back(signer1.clone());
         signers.push_back(signer2.clone());
-        
+
         client.set_signers(&admin, &signers, 2);
-        
+
         let retrieved_signers = client.get_signers();
         assert_eq!(retrieved_signers.len(), 2);
         assert_eq!(client.get_threshold(), 2);

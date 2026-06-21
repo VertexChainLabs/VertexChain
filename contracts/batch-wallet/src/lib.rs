@@ -107,7 +107,8 @@ impl BatchWalletEvents {
 
     pub fn wallet_recovered(env: &Env, old_owner: &Address, new_owner: &Address) {
         let topics = (symbol_short!("wallet"), symbol_short!("recovered"));
-        env.events().publish(topics, (old_owner.clone(), new_owner.clone()));
+        env.events()
+            .publish(topics, (old_owner.clone(), new_owner.clone()));
     }
 }
 
@@ -256,7 +257,7 @@ impl BatchWalletContract {
         for i in 0..requests.len() {
             let request = requests.get(i).unwrap();
             let owner = request.owner.clone();
-            
+
             // Check if this address was already seen in this batch
             for seen in seen_addresses.iter() {
                 if seen == owner {

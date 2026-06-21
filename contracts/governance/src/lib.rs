@@ -335,10 +335,10 @@ mod tests {
     fn test_initialize() {
         let env = Env::default();
         let admin = Address::generate(&env);
-        
+
         let contract_id = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &contract_id);
-        
+
         client.initialize(&admin, 2);
         assert_eq!(client.get_admin(), admin);
     }
@@ -348,10 +348,10 @@ mod tests {
     fn test_cannot_initialize_twice() {
         let env = Env::default();
         let admin = Address::generate(&env);
-        
+
         let contract_id = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &contract_id);
-        
+
         client.initialize(&admin, 2);
         client.initialize(&admin, 2);
     }
@@ -360,27 +360,27 @@ mod tests {
     fn test_create_and_execute_proposal() {
         let env = Env::default();
         env.mock_all_auths();
-        
+
         let admin = Address::generate(&env);
         let proposer = Address::generate(&env);
         let voter1 = Address::generate(&env);
         let voter2 = Address::generate(&env);
-        
+
         let contract_id = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &contract_id);
-        
+
         client.initialize(&admin, 2);
-        
+
         let config_key = String::from_str(&env, "test_key");
         let config_value = String::from_str(&env, "test_value");
-        
+
         let proposal_id = client.create_proposal(&proposer, &config_key, &config_value, 1000);
-        
+
         client.vote_proposal(&voter1, proposal_id);
         client.vote_proposal(&voter2, proposal_id);
-        
+
         client.execute_proposal(&admin, proposal_id);
-        
+
         let retrieved_config = client.get_config(&config_key);
         assert_eq!(retrieved_config, Some(config_value));
     }
