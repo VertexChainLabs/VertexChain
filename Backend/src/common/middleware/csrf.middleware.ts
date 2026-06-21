@@ -1,7 +1,18 @@
 import { HttpException, HttpStatus } from '@nestjs/common';
 import { NextFunction, Request, Response } from 'express';
 import * as cookieParser from 'cookie-parser';
-import Tokens from 'csrf';
+// `csrf` v3.1 exports `Tokens` as a CommonJS default. Without `esModuleInterop`,
+// `import Tokens from 'csrf'` resolves to the module namespace object instead
+// of the class, so `new Tokens()` blows up with `csrf_1.default is not a constructor`.
+// Pull the class out via a namespace import + default fallback so it works under
+// both CJS and ESM-style transpilation.
+import * as csrfLib from 'csrf';
+const Tokens = ((csrfLib as unknown as { default?: unknown }).default ??
+  csrfLib) as new () => {
+  secretSync(): string;
+  create(secret: string): string;
+  verify(secret: string, token: string): boolean;
+};
 
 const csrfTokens = new Tokens();
 const CSRF_COOKIE_NAME = process.env.CSRF_COOKIE_NAME ?? 'csrfToken';
