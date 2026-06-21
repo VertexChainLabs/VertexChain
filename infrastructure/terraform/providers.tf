@@ -14,8 +14,8 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Project     = "vertexchain"
-      ManagedBy   = "terraform"
+      Project   = "vertexchain"
+      ManagedBy = "terraform"
     }
   }
 }
