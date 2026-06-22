@@ -7,8 +7,7 @@ import * as cookieParser from 'cookie-parser';
 // Pull the class out via a namespace import + default fallback so it works under
 // both CJS and ESM-style transpilation.
 import * as csrfLib from 'csrf';
-const Tokens = ((csrfLib as unknown as { default?: unknown }).default ??
-  csrfLib) as new () => {
+const Tokens = ((csrfLib as unknown as { default?: unknown }).default ?? csrfLib) as new () => {
   secretSync(): string;
   create(secret: string): string;
   verify(secret: string, token: string): boolean;
@@ -23,8 +22,8 @@ export const csrfCookieParser = cookieParser();
 function getCsrfValue(req: Request): string | undefined {
   return (
     (req.headers['x-csrf-token'] as string) ||
-    (req.body && (req.body as Record<string, unknown>)._csrf as string) ||
-    (req.query && (req.query as Record<string, unknown>)._csrf as string)
+    (req.body && ((req.body as Record<string, unknown>)._csrf as string)) ||
+    (req.query && ((req.query as Record<string, unknown>)._csrf as string))
   );
 }
 
@@ -37,11 +36,7 @@ function getCsrfSecret(req: Request): string {
   return csrfTokens.secretSync();
 }
 
-export const csrfProtection = (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
+export const csrfProtection = (req: Request, res: Response, next: NextFunction) => {
   const secret = getCsrfSecret(req);
 
   if (!req.cookies?.[CSRF_COOKIE_NAME]) {
@@ -69,12 +64,7 @@ export const csrfProtection = (
   return next();
 };
 
-export function csrfErrorHandler(
-  err: unknown,
-  _req: Request,
-  _res: Response,
-  next: NextFunction,
-) {
+export function csrfErrorHandler(err: unknown, _req: Request, _res: Response, next: NextFunction) {
   if (err && typeof err === 'object' && 'code' in err && (err as any).code === 'EBADCSRFTOKEN') {
     next(new HttpException('Invalid or missing CSRF token', HttpStatus.FORBIDDEN));
     return;

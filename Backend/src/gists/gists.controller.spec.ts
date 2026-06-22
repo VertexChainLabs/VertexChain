@@ -35,7 +35,7 @@ describe('GistsController', () => {
   });
 
   // Helper to create mock Gist objects
-const createMockGist = (overrides?: Partial<Gist>): Gist => {
+  const createMockGist = (overrides?: Partial<Gist>): Gist => {
     return {
       id: '123e4567-e89b-12d3-a456-426614174000',
       content: 'Great coffee spot here!',
@@ -47,7 +47,7 @@ const createMockGist = (overrides?: Partial<Gist>): Gist => {
       created_at: new Date('2026-03-25T04:34:31.334Z'),
       ...overrides,
     };
-  }
+  };
 
   describe('create()', () => {
     it('should call gistsService.create with the provided DTO', async () => {
