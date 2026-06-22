@@ -9,9 +9,17 @@ import {
   csrfErrorHandler,
   csrfProtection,
 } from './common/middleware/csrf.middleware';
+import { compressionMiddleware } from './common/middleware/compression.middleware';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Issue 43 — Response compression.
+  // Registered first so the middleware wraps `res.write` / `res.end`
+  // before CORS, CSRF, validation, and the NestJS controllers run. Every
+  // downstream handler writes through the compressor; CORS preflights
+  // (OPTIONS) are skipped ahead of all handlers via `req.method`.
+  app.use(compressionMiddleware);
 
   // Issue 78 — CORS
   const allowedOrigins = process.env.CORS_ORIGINS

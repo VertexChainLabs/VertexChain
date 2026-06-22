@@ -11,6 +11,7 @@ This file is maintained by the `changelog-generator` CI workflow (`infrastructur
 
 ### Features
 
+- perf(backend): add API response compression middleware (#43) — brotli-preferred compression with gzip fallback, RFC 7231 Accept-Encoding / q-value negotiation (including wildcard precedence and explicit `q=0`), ALB/ELB health-check and `HEAD` / `OPTIONS` skips, RFC-compliant body stripping for 204 / 304, zlib Transform streaming that preserves the `res.write` backpressure signal, mid-stream socket teardown on compressor error, buffer reclaim on premature client disconnect, and full unit + HTTP-level e2e coverage
 - add .nvmrc and .env.example files for all workspaces ([1c78cd9](../../commit/1c78cd999379691f3965382ba27aafb927770d1e))
 - add .nvmrc and .env.example files for all workspaces ([ffc655c](../../commit/ffc655c670b1d4fed178c174d0c9a5d452bde565))
 - lazy-load export libraries and implement indexer upsert logic ([1adea97](../../commit/1adea972f2ffca0d0dcf6071cad51c7658272fd1))
