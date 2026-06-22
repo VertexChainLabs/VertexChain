@@ -44,45 +44,41 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          # Allowed conventional-commit types. Pinned explicitly so an
-          # upstream default change in the action cannot silently relax
-          # our policy. Mirrors the list documented in CONTRIBUTING.md.
-          # Encoded as a literal JSON string (`|`, not `>-`) so the JSON
-          # is byte-for-byte and reformatting it cannot accidentally
-          # produce a malformed payload.
+          # Allowed conventional-commit types, one per line. NOTE:
+          # `amannn/action-semantic-pull-request`'s ConfigParser splits
+          # this input by `\n` and trims each line — it does NOT parse
+          # a JSON array. So `types: |` with a `["feat",...]` array
+          # silently produces a garbage list of 13 entries (`[`,
+          # `"feat",`, `"ci",`, …) and `result.type` fails to match.
+          # Pinned explicitly so an upstream default change in the
+          # action cannot silently relax our policy. Mirrors the list
+          # documented in CONTRIBUTING.md.
           types: |
-            [
-              "feat",
-              "fix",
-              "chore",
-              "docs",
-              "style",
-              "refactor",
-              "perf",
-              "test",
-              "build",
-              "ci",
-              "revert"
-            ]
-          # Subject pattern:  <type>(<scope>)!: <summary>
-          # - type:    one of the entries in `types` (enforced separately)
-          # - scope:   OPTIONAL. Kept optional on purpose: CONTRIBUTING.md
-          #            shows scope in the format spec but the existing
-          #            commit log mixes scoped and unscoped titles
-          #            (e.g. "perf(backend): ..." vs. "fix: ..."), and
-          #            issue #36 itself is unscoped ("ci: add ..."). Make
-          #            scope mandatory only if/when the team adopts a
-          #            stricter convention.
-          # - !:       OPTIONAL, marks a breaking change (Conventional
-          #            Commits spec).
-          # - summary: present tense, no trailing period. Length is not
-          #            bound here so a deliberate, descriptive title is
-          #            still allowed; the action surfaces a check status
-          #            either way.
-          subjectPattern: '^(\w+)(?:\([\w\-\.\/]+\))?!?: .+$'
+            feat
+            fix
+            chore
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            revert
+          # Subject validator. The action runs the title through
+          # conventional-commits-parser first (built-in headerPattern)
+          # which extracts `type`, `scope`, and `subject`. The action
+          # then checks `subjectPattern` against the parsed `subject`
+          # ONLY (the bare summary), NOT the full title.
+          #
+          # We just enforce what CONTRIBUTING.md states: non-empty and
+          # ≤ 72 characters. Kept permissive otherwise so descriptive
+          # titles still pass.
+          subjectPattern: '^.{1,72}$'
           subjectPatternError: >-
-            The PR title does not follow Conventional Commits.
-            Expected format:  <type>(<scope>): <summary>
+            The PR subject (everything after the type/scope prefix) must be
+            non-empty and ≤ 72 characters. Expected title shape:
+              <type>(<scope>): <summary>
 
             Allowed types: feat, fix, chore, docs, style, refactor,
             perf, test, build, ci, revert.
