@@ -132,6 +132,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Unit tests
+        run: npm run test
+
       # Next.js's `build` runs the TypeScript compiler end-to-end, so this
       # doubles as the typecheck step.
       - name: Build
