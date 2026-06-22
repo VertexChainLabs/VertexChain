@@ -1,0 +1,95 @@
+name: Lint PR Title
+
+# Enforce Conventional Commits-style PR titles so the changelog
+# generator and release tooling can categorize changes automatically.
+# See CONTRIBUTING.md -> "Commit message format (Conventional Commits)"
+# for the spec contributors should follow.
+#
+# This complements (but does not replace) the existing CI matrix in
+# ci.yml: ci.yml runs build/test/lint on PR *code*, this workflow
+# validates the PR *title* metadata only.
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+    branches: [main]
+
+# Cancel any in-flight run for the same PR when a new commit pushes
+# supersede it. Authors iterate on PR titles, so this saves minutes.
+concurrency:
+  group: pr-title-lint-${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+# Principle of least privilege: the action only needs to read PR
+# metadata and write the commit status check. No code is checked out,
+# so we deliberately do NOT set `pull_request_target` (which would
+# run against the base branch and expose secrets to fork PRs).
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+jobs:
+  validate:
+    name: Validate PR title (Conventional Commits)
+    # No checkout step is needed: the action reads PR metadata from
+    # the GitHub API via GITHUB_TOKEN, not from the working tree.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR title
+        uses: amannn/action-semantic-pull-request@v5.5.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Allowed conventional-commit types. Pinned explicitly so an
+          # upstream default change in the action cannot silently relax
+          # our policy. Mirrors the list documented in CONTRIBUTING.md.
+          # Encoded as a literal JSON string (`|`, not `>-`) so the JSON
+          # is byte-for-byte and reformatting it cannot accidentally
+          # produce a malformed payload.
+          types: |
+            [
+              "feat",
+              "fix",
+              "chore",
+              "docs",
+              "style",
+              "refactor",
+              "perf",
+              "test",
+              "build",
+              "ci",
+              "revert"
+            ]
+          # Subject pattern:  <type>(<scope>)!: <summary>
+          # - type:    one of the entries in `types` (enforced separately)
+          # - scope:   OPTIONAL. Kept optional on purpose: CONTRIBUTING.md
+          #            shows scope in the format spec but the existing
+          #            commit log mixes scoped and unscoped titles
+          #            (e.g. "perf(backend): ..." vs. "fix: ..."), and
+          #            issue #36 itself is unscoped ("ci: add ..."). Make
+          #            scope mandatory only if/when the team adopts a
+          #            stricter convention.
+          # - !:       OPTIONAL, marks a breaking change (Conventional
+          #            Commits spec).
+          # - summary: present tense, no trailing period. Length is not
+          #            bound here so a deliberate, descriptive title is
+          #            still allowed; the action surfaces a check status
+          #            either way.
+          subjectPattern: '^(\w+)(?:\([\w\-\.\/]+\))?!?: .+$'
+          subjectPatternError: >-
+            The PR title does not follow Conventional Commits.
+            Expected format:  <type>(<scope>): <summary>
+
+            Allowed types: feat, fix, chore, docs, style, refactor,
+            perf, test, build, ci, revert.
+
+            Examples:
+              feat(api): add user authentication endpoint
+              fix(ui): correct navigation dropdown focus
+              ci(workflows): add semantic PR title linting
+
+            See CONTRIBUTING.md for the full spec.

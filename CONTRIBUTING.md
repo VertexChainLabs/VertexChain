@@ -363,7 +363,7 @@ npm run test
 
 ### Pull Request Guidelines
 
-- **Title**: Use a clear, descriptive title following Conventional Commits format
+- **Title**: Use a clear, descriptive title following Conventional Commits format. This is enforced automatically by the [`pr-title-lint.yml`](.github/workflows/pr-title-lint.yml) workflow on every PR open / edit / reopen / synchronize, so non-conforming titles will block merge. See [Commit message format (Conventional Commits)](#commit-message-format-conventional-commits) below for the spec.
 - **Description**: Explain what changes you made and why
 - **Tests**: Ensure all tests pass
 - **Documentation**: Update relevant documentation if needed
