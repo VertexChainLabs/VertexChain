@@ -1,8 +1,11 @@
-name: Dependency Update Automation
+name: Dependency Update Automation (deprecated)
 
+# Issue #34: This workflow is superseded by Dependabot at `.github/dependabot.yml`.
+# Both would run on the same weekly cadence, producing duplicate PRs.
+# Disabled by default; manual `workflow_dispatch` is retained for emergencies
+# (e.g. when Dependabot is paused or fails for a given ecosystem).
 on:
-  schedule:
-    - cron: "0 6 * * 1"
+  schedule: []
   workflow_dispatch:
 
 permissions:
