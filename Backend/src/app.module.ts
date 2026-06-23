@@ -17,6 +17,11 @@ import { AppService } from './app.service';
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
+      // Issue #16: NestJS ThrottlerModule tracks by `req.ip` by default,
+      // giving us per-IP rate limiting out of the box. Global ThrottlerGuard
+      // (APP_GUARD below) applies the default. Per-route differentiation
+      // is handled by controllers using @Throttle / @SkipThrottle
+      // (e.g., GistsController).
       useFactory: (config: ConfigService) => [
         {
           ttl: config.get<number>('THROTTLE_TTL_MS', 60000),
