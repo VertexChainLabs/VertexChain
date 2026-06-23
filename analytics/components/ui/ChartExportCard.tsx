@@ -72,8 +72,12 @@ export default function ChartExportCard({ title, children }: ChartExportCardProp
             type="button"
             onClick={() =>
               withElement(async (element) => {
-                await downloadChartImage(title, element, background);
-                setStatus('PNG downloaded successfully.');
+                try {
+                  await downloadChartImage(title, element, background);
+                  setStatus('PNG downloaded successfully.');
+                } catch (error) {
+                  setStatus(error instanceof Error ? error.message : 'Download failed.');
+                }
               })
             }
             style={{

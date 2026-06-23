@@ -1,0 +1,85 @@
+name: Accessibility Checks
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'Frontend/**'
+      - 'analytics/**'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'Frontend/**'
+      - 'analytics/**'
+
+jobs:
+  axe-core:
+    name: axe-core Accessibility Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: Frontend/package-lock.json
+
+      - name: Install dependencies (Frontend)
+        working-directory: Frontend
+        run: npm ci
+
+      - name: Build Frontend
+        working-directory: Frontend
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Start Frontend server
+        working-directory: Frontend
+        run: |
+          npm start &
+          sleep 5
+          echo "Server started"
+
+      - name: Run axe-core accessibility audit
+        run: |
+          npx @axe-core/cli http://localhost:3000 \
+            --exit \
+            --tags wcag2a,wcag2aa,wcag21a,wcag21aa \
+            --save artifacts/accessibility-report.json
+        continue-on-error: true
+
+      - name: Upload accessibility report
+        uses: actions/upload-artifact@v4
+        with:
+          name: accessibility-report-${{ github.sha }}
+          path: artifacts/accessibility-report.json
+          retention-days: 30
+
+  lint-a11y:
+    name: ESLint a11y Rules
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: Frontend/package-lock.json
+
+      - name: Install dependencies (Frontend)
+        working-directory: Frontend
+        run: npm ci
+
+      - name: Run ESLint with a11y plugin
+        working-directory: Frontend
+        run: npx eslint --ext .ts,.tsx src/ --rule '{jsx-a11y/alt-text:error,jsx-a11y/aria-props:error,jsx-a11y/aria-role:error,jsx-a11y/click-events-have-key-events:error,jsx-a11y/no-static-element-interactions:error,jsx-a11y/tabindex-no-positive:error}'
+        continue-on-error: true

@@ -1,5 +1,3 @@
-import html2canvas from 'html2canvas';
-
 export type ExportBackground = 'white' | 'transparent';
 
 function buildFilename(title: string) {
@@ -9,6 +7,13 @@ function buildFilename(title: string) {
 }
 
 async function captureElement(element: HTMLElement, background: ExportBackground) {
+  let html2canvas: typeof import('html2canvas').default;
+  try {
+    html2canvas = (await import('html2canvas')).default;
+  } catch {
+    throw new Error('Failed to load chart export library. Please try again.');
+  }
+
   return html2canvas(element, {
     scale: 2,
     backgroundColor: background === 'transparent' ? null : '#ffffff',

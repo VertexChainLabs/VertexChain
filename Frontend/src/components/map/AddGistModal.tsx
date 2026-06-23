@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface AddGistModalProps {
@@ -16,8 +16,36 @@ export default function AddGistModal({
 }: AddGistModalProps) {
   const [content, setContent] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
-  const handleSubmit = () => {
+  // Focus trap: save and restore focus
+  useEffect(() => {
+    if (isOpen) {
+      previousFocusRef.current = document.activeElement as HTMLElement;
+      // Focus the modal after animation
+      setTimeout(() => {
+        const firstFocusable = modalRef.current?.querySelector<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        firstFocusable?.focus();
+      }, 50);
+    } else if (previousFocusRef.current) {
+      previousFocusRef.current.focus();
+    }
+  }, [isOpen]);
+
+  // Keyboard: Escape to close
+  useEffect(() => {
+    if (!isOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
+
+  const handleSubmit = useCallback(() => {
     if (!content.trim()) return;
 
     setIsLoading(true);
@@ -27,7 +55,7 @@ export default function AddGistModal({
       setIsLoading(false);
       onClose();
     }, 2000);
-  };
+  }, [content, onAddGist, onClose]);
 
   return (
     <AnimatePresence>
@@ -40,6 +68,10 @@ export default function AddGistModal({
           onClick={onClose}
         >
           <motion.div
+            ref={modalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-gist-title"
             initial={{ y: '100%' }}
             animate={{ y: '0%' }}
             exit={{ y: '100%' }}
@@ -47,7 +79,7 @@ export default function AddGistModal({
             className="w-full max-w-lg p-6 bg-white dark:bg-gray-800 rounded-t-2xl shadow-lg"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">
+            <h2 id="add-gist-title" className="text-xl font-bold mb-4 text-gray-900 dark:text-white">
               Pin a New Gist
             </h2>
             <textarea
@@ -55,11 +87,13 @@ export default function AddGistModal({
               onChange={(e) => setContent(e.target.value)}
               placeholder="What's the gist? (max 280 characters)"
               maxLength={280}
+              aria-label="Gist content"
               className="w-full p-3 border rounded-lg h-28 bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <button
               onClick={handleSubmit}
               disabled={isLoading}
+              aria-busy={isLoading}
               className="w-full mt-4 px-6 py-3 text-lg font-semibold text-white  rounded-lg   bg-gradient-to-r from-purple-600 via-blue-600 to-pink-400 
                             bg-[size:200%_auto] 
                             hover:bg-[position:100%_center] 

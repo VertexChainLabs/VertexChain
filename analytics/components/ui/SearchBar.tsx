@@ -21,6 +21,7 @@ export default function SearchBar({ open: controlledOpen, onClose }: SearchBarPr
   const [results, setResults] = useState<SearchResult[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   const router = useRouter();
 
   const close = useCallback(() => {
@@ -29,11 +30,14 @@ export default function SearchBar({ open: controlledOpen, onClose }: SearchBarPr
     setActiveIndex(0);
     setInternalOpen(false);
     onClose?.();
+    // Restore focus to previously focused element
+    setTimeout(() => previousFocusRef.current?.focus(), 0);
   }, [onClose]);
 
-  // Focus input when opened
+  // Save previous focus and focus input when opened
   useEffect(() => {
     if (isOpen) {
+      previousFocusRef.current = document.activeElement as HTMLElement;
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [isOpen]);
@@ -95,6 +99,7 @@ export default function SearchBar({ open: controlledOpen, onClose }: SearchBarPr
   }
 
   const groups = groupResults(results);let flatIndex = 0;
+  const listboxId = 'search-results-listbox';
 
   return (
     <>
@@ -108,6 +113,7 @@ export default function SearchBar({ open: controlledOpen, onClose }: SearchBarPr
       {/* Modal */}
       <div
         role="dialog"
+        aria-modal="true"
         aria-label="Search"
         style={{
           position: 'fixed',
@@ -139,10 +145,18 @@ export default function SearchBar({ open: controlledOpen, onClose }: SearchBarPr
               background: 'transparent',
               color: '#0f172a',
             }}
+            role="combobox"
             aria-label="Search query"
+            aria-expanded={results.length > 0}
+            aria-controls={listboxId}
+            aria-activedescendant={results[activeIndex] ? `search-result-${results[activeIndex].id}` : undefined}
+            autoComplete="off"
           />
           <kbd
             onClick={close}
+            tabIndex={0}
+            role="button"
+            aria-label="Close search"
             style={{ fontSize: 11, background: '#f1f5f9', borderRadius: 6, padding: '2px 7px', color: '#64748b', cursor: 'pointer' }}
           >
             Esc
@@ -151,12 +165,17 @@ export default function SearchBar({ open: controlledOpen, onClose }: SearchBarPr
 
         {/* Results */}
         {results.length > 0 && (
-          <div style={{ maxHeight: 360, overflowY: 'auto', padding: '8px 0' }}>
+          <div
+            id={listboxId}
+            role="listbox"
+            aria-label="Search results"
+            style={{ maxHeight: 360, overflowY: 'auto', padding: '8px 0' }}
+          >
             {ORDERED_TYPES.map((type) => {
               const items = groups[type];
               if (items.length === 0) return null;
               return (
-                <div key={type}>
+                <div key={type} role="group" aria-label={TYPE_LABELS[type]}>
                   <div style={{ padding: '6px 16px 2px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8' }}>
                     {TYPE_LABELS[type]}
                   </div>
@@ -166,7 +185,10 @@ export default function SearchBar({ open: controlledOpen, onClose }: SearchBarPr
                     return (
                       <button
                         key={item.id}
+                        id={`search-result-${item.id}`}
                         type="button"
+                        role="option"
+                        aria-selected={isActive}
                         onClick={() => navigate(item)}
                         onMouseEnter={() => setActiveIndex(idx)}
                         style={{

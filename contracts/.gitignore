@@ -5,5 +5,8 @@ Cargo.lock
 # Soroban build artifacts
 *.wasm
 
+# Test artifacts
+test_snapshots/
+
 # Environment
 .env

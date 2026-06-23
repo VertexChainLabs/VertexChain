@@ -21,12 +21,12 @@ export function Header() {
               VertexChain
             </span>
           </Link>
-          <nav className="flex items-center gap-4">
+          <nav aria-label="Main navigation" className="flex items-center gap-4">
             <Link
               href="/map"
               className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-[--text-secondary] hover:text-[--text-primary] transition-colors rounded-lg hover:bg-[--hover-bg]"
             >
-              <MapPin className="w-4 h-4" />
+              <MapPin className="w-4 h-4" aria-hidden="true" />
               Map
             </Link>
           </nav>

@@ -13,11 +13,12 @@ function TopLocationsTable() {
 
   return (
     <table className="w-full text-sm">
+      <caption className="sr-only">Top locations by activity</caption>
       <thead>
         <tr className="text-left text-gray-500 border-b">
-          <th className="pb-2">Location</th>
-          <th className="pb-2">7-day trend</th>
-          <th className="pb-2 text-right">Total</th>
+          <th scope="col" className="pb-2">Location</th>
+          <th scope="col" className="pb-2">7-day trend</th>
+          <th scope="col" className="pb-2 text-right">Total</th>
         </tr>
       </thead>
       <tbody>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Annotation } from '@/lib/annotations';
 
 interface AnnotationModalProps {
@@ -13,9 +13,37 @@ interface AnnotationModalProps {
 export default function AnnotationModal({ initial, defaultDate = '', onSave, onClose }: AnnotationModalProps) {
   const [text, setText] = useState(initial?.text ?? '');
   const [date, setDate] = useState(initial?.date ?? defaultDate);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  // Focus trap: save and restore focus
+  useEffect(() => {
+    previousFocusRef.current = document.activeElement as HTMLElement;
+    setTimeout(() => {
+      const firstFocusable = modalRef.current?.querySelector<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      firstFocusable?.focus();
+    }, 50);
+    return () => {
+      previousFocusRef.current?.focus();
+    };
+  }, []);
+
+  // Keyboard: Escape to close
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="annotation-modal-title"
       style={{
         position: 'fixed',
         inset: 0,
@@ -28,6 +56,7 @@ export default function AnnotationModal({ initial, defaultDate = '', onSave, onC
       onClick={onClose}
     >
       <div
+        ref={modalRef}
         style={{
           background: '#ffffff',
           borderRadius: 20,
@@ -37,7 +66,7 @@ export default function AnnotationModal({ initial, defaultDate = '', onSave, onC
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 style={{ margin: '0 0 18px', fontSize: 20 }}>
+        <h2 id="annotation-modal-title" style={{ margin: '0 0 18px', fontSize: 20 }}>
           {initial ? 'Edit annotation' : 'Add annotation'}
         </h2>
 
@@ -47,6 +76,7 @@ export default function AnnotationModal({ initial, defaultDate = '', onSave, onC
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
+            aria-label="Annotation date"
             style={{ borderRadius: 10, border: '1px solid #cbd5e1', padding: '10px 12px', fontSize: 14 }}
           />
         </label>
@@ -58,6 +88,7 @@ export default function AnnotationModal({ initial, defaultDate = '', onSave, onC
             onChange={(e) => setText(e.target.value)}
             rows={3}
             placeholder="Describe this event…"
+            aria-label="Annotation note"
             style={{
               borderRadius: 10,
               border: '1px solid #cbd5e1',

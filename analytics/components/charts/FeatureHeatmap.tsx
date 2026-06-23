@@ -1,10 +1,6 @@
 'use client';
 
-import { Chart as ChartJS, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
-import { MatrixController, MatrixElement } from 'chartjs-plugin-matrix';
 import { useState } from 'react';
-
-ChartJS.register(CategoryScale, LinearScale, Tooltip, Legend, MatrixController, MatrixElement);
 
 const FEATURES = ['Post Gist', 'Map View', 'Search', 'Reactions', 'Comments', 'Profile'];
 const SEGMENTS = ['Power Users', 'Casual', 'New Users', 'Mobile', 'Desktop'];

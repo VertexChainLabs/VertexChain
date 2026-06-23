@@ -116,8 +116,8 @@ export const Features: React.FC = () => {
               {icons.map(({ Icon, color, x, y, px, py }, index) => (
                 <React.Fragment key={index}>
                   <AnimatedBeam startX={centerX} startY={centerY} endX={x} endY={y} px={px} py={py} />
-                  <Circle x={x} y={y} className="bg-gray-900 w-10 h-10 sm:w-12 sm:h-12 border-white">
-                    <Icon size={iconSize} className={color} />
+                  <Circle x={x} y={y} className="bg-gray-900 w-10 h-10 sm:w-12 sm:h-12 border-white" aria-hidden="true">
+                    <Icon size={iconSize} className={color} aria-hidden="true" />
                   </Circle>
                 </React.Fragment>
               ))}

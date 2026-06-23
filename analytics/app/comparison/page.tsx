@@ -1,6 +1,5 @@
 'use client';
 
-import { jsPDF } from 'jspdf';
 import { useMemo, useState } from 'react';
 import ComparisonTable, { type ComparisonRow } from '@/components/ComparisonTable';
 
@@ -63,7 +62,14 @@ function downloadCsv(rows: ComparisonRow[], leftLabel: string, rightLabel: strin
   URL.revokeObjectURL(url);
 }
 
-function downloadPdf(rows: ComparisonRow[], leftLabel: string, rightLabel: string) {
+async function downloadPdf(rows: ComparisonRow[], leftLabel: string, rightLabel: string) {
+  let jsPDF: typeof import('jspdf').jsPDF;
+  try {
+    jsPDF = (await import('jspdf')).jsPDF;
+  } catch {
+    throw new Error('Failed to load PDF export library. Please try again.');
+  }
+
   const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
 
   pdf.setFillColor(15, 23, 42);
@@ -101,6 +107,7 @@ export default function ComparisonPage() {
   const [currentEnd, setCurrentEnd] = useState('2026-03-28');
   const [previousStart, setPreviousStart] = useState('2026-02-01');
   const [previousEnd, setPreviousEnd] = useState('2026-02-28');
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   const currentMetrics = useMemo(
     () => generateMetrics(currentStart, currentEnd, 2),
@@ -187,7 +194,14 @@ export default function ComparisonPage() {
           </button>
           <button
             type="button"
-            onClick={() => downloadPdf(rows, currentLabel, previousLabel)}
+            onClick={async () => {
+              setPdfError(null);
+              try {
+                await downloadPdf(rows, currentLabel, previousLabel);
+              } catch (err) {
+                setPdfError(err instanceof Error ? err.message : 'PDF export failed');
+              }
+            }}
             style={{
               border: 'none',
               borderRadius: 999,
@@ -200,6 +214,11 @@ export default function ComparisonPage() {
           >
             Export PDF
           </button>
+          {pdfError && (
+            <span style={{ fontSize: 12, color: '#b91c1c', width: '100%', textAlign: 'right' }}>
+              {pdfError}
+            </span>
+          )}
         </div>
       </section>
 

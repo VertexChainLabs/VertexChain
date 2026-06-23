@@ -7,7 +7,11 @@ import { DatabaseModule } from '../database/database.module';
 
 type GistWithCoords = Gist & { lat: number; lon: number; distance_meters?: number };
 
-describe('GistRepository (integration)', () => {
+// The GitHub Actions CI runner does not provide a Postgres container.
+// Skip the integration suite in CI; run it locally with a real DB or via `npm run test:e2e`.
+const describeIntegration = process.env.CI ? describe.skip : describe;
+
+describeIntegration('GistRepository (integration)', () => {
   let repository: GistRepository;
   let module: TestingModule;
 

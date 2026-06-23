@@ -70,37 +70,49 @@ export default function CommandPalette({ commands, recentIds = [], placeholder =
 
   if (!open) return null;
 
+  const listboxId = 'command-palette-listbox';
+
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Command palette"
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-[15vh]"
       onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}
     >
       <div className="w-full max-w-lg rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
         <div className="flex items-center gap-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
-          <span className="text-gray-400">⌘</span>
+          <span className="text-gray-400" aria-hidden="true">⌘</span>
           <input
             ref={inputRef}
             value={query}
             onChange={(e) => { setQuery(e.target.value); setCursor(0); }}
             onKeyDown={onKeyDown}
             placeholder={placeholder}
+            role="combobox"
+            aria-label="Search commands"
+            aria-expanded={filtered.length > 0}
+            aria-controls={listboxId}
+            aria-activedescendant={filtered[cursor] ? `cmd-${filtered[cursor].id}` : undefined}
+            autoComplete="off"
             className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 outline-none dark:text-gray-200"
           />
           {query && (
-            <button onClick={() => setQuery('')} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+            <button onClick={() => setQuery('')} className="text-xs text-gray-400 hover:text-gray-600" aria-label="Clear search">✕</button>
           )}
         </div>
 
-        <ul className="max-h-72 overflow-y-auto py-1" role="listbox">
+        <ul id={listboxId} className="max-h-72 overflow-y-auto py-1" role="listbox" aria-label="Commands">
           {!query && recent.length > 0 && (
-            <li className="px-4 py-1 text-xs font-semibold text-gray-400 uppercase tracking-wide">Recent</li>
+            <li className="px-4 py-1 text-xs font-semibold text-gray-400 uppercase tracking-wide" role="presentation">Recent</li>
           )}
           {filtered.length === 0 && (
-            <li className="px-4 py-6 text-center text-sm text-gray-400">No results</li>
+            <li className="px-4 py-6 text-center text-sm text-gray-400" role="presentation">No results</li>
           )}
           {filtered.map((cmd, i) => (
             <li
               key={cmd.id}
+              id={`cmd-${cmd.id}`}
               role="option"
               aria-selected={i === cursor}
               onClick={() => { cmd.onSelect(); setOpen(false); }}
@@ -112,7 +124,7 @@ export default function CommandPalette({ commands, recentIds = [], placeholder =
                   : 'text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800',
               ].join(' ')}
             >
-              {cmd.icon && <span className="text-base">{cmd.icon}</span>}
+              {cmd.icon && <span className="text-base" aria-hidden="true">{cmd.icon}</span>}
               <span className="flex-1 font-medium">{cmd.label}</span>
               {cmd.description && (
                 <span className="text-xs text-gray-400 truncate max-w-[160px]">{cmd.description}</span>

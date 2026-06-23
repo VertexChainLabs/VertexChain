@@ -1,6 +1,3 @@
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
-
 export interface ReportSection {
   title: string;
   element: HTMLElement;
@@ -36,6 +33,16 @@ export async function generatePdfReport(
   dateRange: string,
   onProgress?: (progress: number) => void,
 ) {
+  let jsPDF: typeof import('jspdf').default;
+  let html2canvas: typeof import('html2canvas').default;
+  try {
+    const jsPDFModule = await import('jspdf');
+    jsPDF = jsPDFModule.default;
+    html2canvas = (await import('html2canvas')).default;
+  } catch {
+    throw new Error('Failed to load PDF export library. Please try again.');
+  }
+
   const pdf = new jsPDF({
     format: 'a4',
     unit: 'mm',

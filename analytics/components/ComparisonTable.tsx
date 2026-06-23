@@ -16,15 +16,18 @@ interface ComparisonTableProps {
 
 export default function ComparisonTable({ rows, currentLabel, previousLabel }: ComparisonTableProps) {
   return (
-    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+    <div role="region" aria-label="Comparison table" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 480 }}>
+        <caption className="sr-only">
+          Comparison between {currentLabel} and {previousLabel}
+        </caption>
         <thead>
           <tr>
-            <th style={{ textAlign: 'left', padding: '12px 10px' }}>Metric</th>
-            <th style={{ textAlign: 'left', padding: '12px 10px' }}>{currentLabel}</th>
-            <th style={{ textAlign: 'left', padding: '12px 10px' }}>{previousLabel}</th>
-            <th style={{ textAlign: 'left', padding: '12px 10px' }}>Delta</th>
-            <th style={{ textAlign: 'left', padding: '12px 10px' }}>% Change</th>
+            <th scope="col" style={{ textAlign: 'left', padding: '12px 10px' }}>Metric</th>
+            <th scope="col" style={{ textAlign: 'left', padding: '12px 10px' }}>{currentLabel}</th>
+            <th scope="col" style={{ textAlign: 'left', padding: '12px 10px' }}>{previousLabel}</th>
+            <th scope="col" style={{ textAlign: 'left', padding: '12px 10px' }}>Delta</th>
+            <th scope="col" style={{ textAlign: 'left', padding: '12px 10px' }}>% Change</th>
           </tr>
         </thead>
         <tbody>

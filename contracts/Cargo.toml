@@ -1,16 +1,26 @@
-[package]
-name = "vertexchain-contracts"
+[workspace]
+resolver = "2"
+members = [
+    "gist-registry",
+    "multisig",
+    "governance",
+    "batch-wallet",
+]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2021"
 
-[lib]
-crate-type = ["cdylib", "rlib"]
+# IMPORTANT: do not reintroduce a [workspace.dev-dependencies] block here.
+# That construct is not valid Cargo syntax and is silently ignored at parse
+# time. Member crates must explicitly list `features = ["testutils"]`
+# on their own [dev-dependencies] soroban-sdk entry to enable testutils in
+# tests (see contracts/governance/Cargo.toml for the canonical pattern).
+# See VertexChain PR discussion history for the [workspace.dev-dependencies]
+# root cause behind soroban-sdk 22 test-build failures.
 
-[dependencies]
+[workspace.dependencies]
 soroban-sdk = { version = "22.0.0", features = ["alloc"] }
-
-[dev-dependencies]
-soroban-sdk = { version = "22.0.0", features = ["testutils"] }
 
 [profile.release]
 opt-level = "z"

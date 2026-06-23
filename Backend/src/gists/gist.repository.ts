@@ -22,6 +22,15 @@ export interface CreateGistData {
   tx_hash?: string;
 }
 
+export interface UpsertEventData {
+  stellar_gist_id: string;
+  location_cell: string;
+  content_hash: string;
+  lat: number;
+  lon: number;
+  created_at: Date;
+}
+
 @Injectable()
 export class GistRepository {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
@@ -120,5 +129,62 @@ export class GistRepository {
       [id],
     );
     return rows[0] ?? null;
+  }
+
+  async findByStellarGistId(stellarGistId: string): Promise<Gist | null> {
+    const rows = await this.dataSource.query<Gist[]>(
+      `
+      SELECT
+        id, content, location_cell, content_hash,
+        stellar_gist_id, tx_hash, created_at,
+        ST_X(location::geometry) AS lon,
+        ST_Y(location::geometry) AS lat
+      FROM gists
+      WHERE stellar_gist_id = $1
+      LIMIT 1
+      `,
+      [stellarGistId],
+    );
+    return rows[0] ?? null;
+  }
+
+  async upsertFromEvent(data: UpsertEventData): Promise<Gist> {
+    const { stellar_gist_id, location_cell, content_hash, lat, lon, created_at } = data;
+
+    const result = await this.dataSource.query<Gist[]>(
+      `
+      INSERT INTO gists (
+        content, location, location_cell,
+        content_hash, stellar_gist_id, created_at
+      )
+      VALUES (
+        $1,
+        ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography,
+        $4, $5, $6, $7
+      )
+      ON CONFLICT (stellar_gist_id)
+      DO UPDATE SET
+        location_cell = EXCLUDED.location_cell,
+        content_hash  = EXCLUDED.content_hash,
+        location      = EXCLUDED.location,
+        created_at    = EXCLUDED.created_at
+      RETURNING
+        id, content, location_cell, content_hash,
+        stellar_gist_id, tx_hash, created_at,
+        ST_X(location::geometry) AS lon,
+        ST_Y(location::geometry) AS lat
+      `,
+      [
+        `[Indexed from on-chain event]`,
+        lon,
+        lat,
+        location_cell,
+        content_hash,
+        stellar_gist_id,
+        created_at,
+      ],
+    );
+
+    return result[0];
   }
 }

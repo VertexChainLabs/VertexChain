@@ -1,0 +1,189 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+    # Skip the matrix when a PR touches only docs / templates so we don't
+    # burn CI minutes on changes that can't possibly break a build.
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/PULL_REQUEST_TEMPLATE.md'
+      - CHANGELOG.md
+      - LICENSE
+      - CODE_OF_CONDUCT.md
+      - CONTRIBUTING.md
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/PULL_REQUEST_TEMPLATE.md'
+      - CHANGELOG.md
+      - LICENSE
+      - CODE_OF_CONDUCT.md
+      - CONTRIBUTING.md
+
+# Cancel any previous in-progress run for the same ref so we don't burn
+# runner minutes on superseded pushes while a PR is iterating.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# All jobs only need to read the repo.
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    name: Contracts (Rust / Soroban)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contracts
+
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy (deny warnings)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo check
+        run: cargo check --workspace --all-targets
+
+      - name: cargo test
+        run: cargo test --workspace
+
+      # Sanity check only: catches compile failures on the deploy target.
+      # Does NOT run `wasm-opt` — production Soroban artifacts come from
+      # `soroban contract build`, which adds the optimizer pass. Wire that
+      # in if CI artifacts ever become the release source.
+      # (`--locked` is intentionally omitted: Soroban contract crates
+      # conventionally don't commit Cargo.lock.)
+      - name: cargo build (wasm32 release)
+        run: cargo build --workspace --target wasm32-unknown-unknown --release
+
+  backend:
+    name: Backend (NestJS)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test -- --runInBand
+
+      # `nest build` invokes tsc, so this doubles as the typecheck step.
+      - name: Build
+        run: npm run build
+
+  frontend:
+    name: Frontend (Next.js)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test
+
+      # Next.js's `build` runs the TypeScript compiler end-to-end, so this
+      # doubles as the typecheck step.
+      - name: Build
+        run: npm run build
+
+  analytics:
+    name: Analytics (Next.js)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: analytics
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+  terraform-fmt:
+    name: Terraform fmt
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infrastructure/terraform
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      # No `terraform init` needed: `fmt -check` only inspects source files.
+      - name: terraform fmt -check
+        run: terraform fmt -check -recursive

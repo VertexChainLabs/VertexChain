@@ -7,7 +7,7 @@ import { IpfsService } from '../ipfs/ipfs.service';
 import { SorobanService } from '../soroban/soroban.service';
 import { Gist } from './entities/gist.entity';
 import { PaginatedResponse } from '../common/utils/pagination.helper';
-import { stripHtml } from 'src/common/utils/sanitize';
+import { stripHtml } from '../common/utils/sanitize';
 
 @Injectable()
 export class GistsService {

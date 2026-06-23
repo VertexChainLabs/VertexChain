@@ -22,6 +22,9 @@
     "migration:revert": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js -d src/database/data-source.ts migration:revert",
     "migration:generate": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js -d src/database/data-source.ts migration:generate"
   },
+  "lint-staged": {
+    "*.ts": "eslint --fix"
+  },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.3",
@@ -33,6 +36,8 @@
     "@nestjs/typeorm": "^11.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
+    "cookie-parser": "^1.4.7",
+    "csrf": "^3.1.0",
     "ethers": "^6.15.0",
     "helmet": "^8.2.0",
     "pg": "^8.13.3",
@@ -52,6 +57,7 @@
     "@types/geojson": "^7946.0.16",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.10.7",
+    "@types/sanitize-html": "^2.13.0",
     "@types/supertest": "^6.0.2",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",

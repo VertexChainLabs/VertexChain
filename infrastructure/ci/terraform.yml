@@ -1,0 +1,110 @@
+name: Terraform
+
+on:
+  pull_request:
+    paths: ['infrastructure/terraform/**']
+  push:
+    branches: [main]
+    paths: ['infrastructure/terraform/**']
+  workflow_dispatch:
+    inputs:
+      workspace:
+        description: 'Terraform workspace'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, staging, prod]
+      action:
+        description: 'Terraform action'
+        required: true
+        default: 'plan'
+        type: choice
+        options: [plan, apply]
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  TF_VERSION: '1.9'
+  AWS_REGION: us-east-1
+  TF_WORKING_DIR: infrastructure/terraform
+
+jobs:
+  resolve-workspace:
+    name: Resolve Workspace
+    runs-on: ubuntu-latest
+    outputs:
+      workspace: ${{ steps.resolve.outputs.workspace }}
+      action: ${{ steps.resolve.outputs.action }}
+    steps:
+      - id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "workspace=${{ inputs.workspace }}" >> "$GITHUB_OUTPUT"
+            echo "action=${{ inputs.action }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "workspace=dev" >> "$GITHUB_OUTPUT"
+            echo "action=plan" >> "$GITHUB_OUTPUT"
+          else
+            # push to main → staging apply
+            echo "workspace=staging" >> "$GITHUB_OUTPUT"
+            echo "action=apply" >> "$GITHUB_OUTPUT"
+          fi
+
+  terraform:
+    name: Terraform ${{ needs.resolve-workspace.outputs.action }} (${{ needs.resolve-workspace.outputs.workspace }})
+    needs: resolve-workspace
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve-workspace.outputs.workspace }}
+
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform init -input=false
+
+      - name: Select Workspace
+        run: |
+          terraform workspace select "${{ needs.resolve-workspace.outputs.workspace }}" \
+            || terraform workspace new "${{ needs.resolve-workspace.outputs.workspace }}"
+
+      - name: Terraform Plan
+        id: plan
+        if: needs.resolve-workspace.outputs.action == 'plan'
+        run: terraform plan -input=false -no-color
+        continue-on-error: true
+
+      - name: Post Plan to PR
+        if: github.event_name == 'pull_request' && steps.plan.outcome != 'skipped'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const output = `#### Terraform Plan (${{ needs.resolve-workspace.outputs.workspace }})\n
+            \`\`\`\n${{ steps.plan.outputs.stdout }}\n\`\`\``;
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: context.issue.number,
+              body: output
+            });
+
+      - name: Terraform Apply
+        if: needs.resolve-workspace.outputs.action == 'apply'
+        run: terraform apply -input=false -auto-approve

@@ -27,6 +27,3 @@ export interface QueryBuilderProps {
   savedQueries?: SavedQuery[];
   onLoadQuery?: (query: SavedQuery) => void;
 }
-
-export let nextFilterId = 1;
-export let nextQueryId = 1;

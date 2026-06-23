@@ -6,6 +6,12 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+import {
+  csrfCookieParser,
+  csrfErrorHandler,
+  csrfProtection,
+} from './common/middleware/csrf.middleware';
+import { compressionMiddleware } from './common/middleware/compression.middleware';
 
 async function bootstrap() {
   // Issue #2: preflight — required DB env vars must be set; no silent
@@ -40,6 +46,13 @@ async function bootstrap() {
   app.useBodyParser('json', { limit: bodyLimit });
   app.useBodyParser('urlencoded', { limit: bodyLimit, extended: true });
 
+  // Issue 43 — Response compression.
+  // Registered first so the middleware wraps `res.write` / `res.end`
+  // before CORS, CSRF, validation, and the NestJS controllers run. Every
+  // downstream handler writes through the compressor; CORS preflights
+  // (OPTIONS) are skipped ahead of all handlers via `req.method`.
+  app.use(compressionMiddleware);
+
   // Issue 78 — CORS
   const allowedOrigins = process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',')
@@ -50,6 +63,10 @@ async function bootstrap() {
     credentials: true,
     maxAge: 86400,
   });
+
+  app.use(csrfCookieParser);
+  app.use(csrfProtection);
+  app.use(csrfErrorHandler);
 
   // Validation
   app.useGlobalPipes(

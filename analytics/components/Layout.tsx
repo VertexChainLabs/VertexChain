@@ -190,6 +190,7 @@ export default function Layout({ children }: LayoutProps) {
 
       {/* ── Mobile drawer panel ──────────────────────────────────────────────── */}
       <aside
+        aria-label="Mobile navigation"
         className={`sidebar-transition fixed inset-y-0 left-0 z-50 w-64 border-r border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900 lg:hidden ${
           drawerOpen ? 'translate-x-0' : '-translate-x-full'
         }`}

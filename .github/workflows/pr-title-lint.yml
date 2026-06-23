@@ -1,0 +1,91 @@
+name: Lint PR Title
+
+# Enforce Conventional Commits-style PR titles so the changelog
+# generator and release tooling can categorize changes automatically.
+# See CONTRIBUTING.md -> "Commit message format (Conventional Commits)"
+# for the spec contributors should follow.
+#
+# This complements (but does not replace) the existing CI matrix in
+# ci.yml: ci.yml runs build/test/lint on PR *code*, this workflow
+# validates the PR *title* metadata only.
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+    branches: [main]
+
+# Cancel any in-flight run for the same PR when a new commit pushes
+# supersede it. Authors iterate on PR titles, so this saves minutes.
+concurrency:
+  group: pr-title-lint-${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+# Principle of least privilege: the action only needs to read PR
+# metadata and write the commit status check. No code is checked out,
+# so we deliberately do NOT set `pull_request_target` (which would
+# run against the base branch and expose secrets to fork PRs).
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+jobs:
+  validate:
+    name: Validate PR title (Conventional Commits)
+    # No checkout step is needed: the action reads PR metadata from
+    # the GitHub API via GITHUB_TOKEN, not from the working tree.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR title
+        uses: amannn/action-semantic-pull-request@v5.5.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Allowed conventional-commit types, one per line. NOTE:
+          # `amannn/action-semantic-pull-request`'s ConfigParser splits
+          # this input by `\n` and trims each line — it does NOT parse
+          # a JSON array. So `types: |` with a `["feat",...]` array
+          # silently produces a garbage list of 13 entries (`[`,
+          # `"feat",`, `"ci",`, …) and `result.type` fails to match.
+          # Pinned explicitly so an upstream default change in the
+          # action cannot silently relax our policy. Mirrors the list
+          # documented in CONTRIBUTING.md.
+          types: |
+            feat
+            fix
+            chore
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            revert
+          # Subject validator. The action runs the title through
+          # conventional-commits-parser first (built-in headerPattern)
+          # which extracts `type`, `scope`, and `subject`. The action
+          # then checks `subjectPattern` against the parsed `subject`
+          # ONLY (the bare summary), NOT the full title.
+          #
+          # We just enforce what CONTRIBUTING.md states: non-empty and
+          # ≤ 72 characters. Kept permissive otherwise so descriptive
+          # titles still pass.
+          subjectPattern: '^.{1,72}$'
+          subjectPatternError: >-
+            The PR subject (everything after the type/scope prefix) must be
+            non-empty and ≤ 72 characters. Expected title shape:
+              <type>(<scope>): <summary>
+
+            Allowed types: feat, fix, chore, docs, style, refactor,
+            perf, test, build, ci, revert.
+
+            Examples:
+              feat(api): add user authentication endpoint
+              fix(ui): correct navigation dropdown focus
+              ci(workflows): add semantic PR title linting
+
+            See CONTRIBUTING.md for the full spec.

@@ -41,6 +41,7 @@ export default function Button({
   return (
     <button
       disabled={disabled || loading}
+      aria-busy={loading || undefined}
       className={`inline-flex items-center justify-center rounded-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
       {...props}
     >

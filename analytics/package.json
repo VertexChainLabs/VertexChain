@@ -9,6 +9,9 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": "eslint --fix"
+  },
   "dependencies": {
     "@tanstack/react-query": "^5.66.9",
     "fuse.js": "^7.0.0",

@@ -1,4 +1,5 @@
-import * as XLSX from 'xlsx';
+import type * as XLSXTypes from 'xlsx';
+
 import { categories, generateGistData } from '@/lib/utils';
 
 type CellValue = string | number;
@@ -40,7 +41,7 @@ function buildFilename() {
   return `vertexchain-analytics-${timestamp}.xlsx`;
 }
 
-function setColumnWidths(sheet: XLSX.WorkSheet, rows: CellValue[][]) {
+function setColumnWidths(sheet: XLSXTypes.WorkSheet, rows: CellValue[][]) {
   const widths = rows[0].map((_, columnIndex) => {
     const max = rows.reduce((current, row) => {
       const value = row[columnIndex] == null ? '' : String(row[columnIndex]);
@@ -53,9 +54,9 @@ function setColumnWidths(sheet: XLSX.WorkSheet, rows: CellValue[][]) {
   sheet['!cols'] = widths;
 }
 
-function styleHeaderRow(sheet: XLSX.WorkSheet, columnCount: number) {
+function styleHeaderRow(sheet: XLSXTypes.WorkSheet, columnCount: number, utils: typeof XLSXTypes.utils) {
   for (let index = 0; index < columnCount; index += 1) {
-    const cellRef = XLSX.utils.encode_cell({ c: index, r: 0 });
+    const cellRef = utils.encode_cell({ c: index, r: 0 });
     const cell = sheet[cellRef];
 
     if (!cell) {
@@ -137,16 +138,25 @@ function createOverviewRows(
   ];
 }
 
-function rowsToSheet(name: string, rows: CellValue[][]) {
-  const sheet = XLSX.utils.aoa_to_sheet(rows);
+function rowsToSheet(name: string, rows: CellValue[][], utils: typeof XLSXTypes.utils) {
+  const sheet = utils.aoa_to_sheet(rows);
 
   setColumnWidths(sheet, rows);
-  styleHeaderRow(sheet, rows[0]?.length ?? 0);
+  styleHeaderRow(sheet, rows[0]?.length ?? 0, utils);
 
   return { name, sheet };
 }
 
-export function downloadAnalyticsWorkbook() {
+export async function downloadAnalyticsWorkbook() {
+  let XLSX: typeof import('xlsx');
+  try {
+    XLSX = await import('xlsx');
+  } catch {
+    throw new Error('Failed to load Excel export library. Please try again.');
+  }
+
+  const { utils } = XLSX;
+
   const users = createUsersData(14);
   const locations = createLocationRows();
   const engagement = createEngagementRows();
@@ -165,16 +175,16 @@ export function downloadAnalyticsWorkbook() {
     ...engagement.map((row) => [row.gistId, row.category, row.ageDays, row.engagement]),
   ];
 
-  const workbook = XLSX.utils.book_new();
+  const workbook = utils.book_new();
   const sheets = [
-    rowsToSheet('Overview', overviewRows),
-    rowsToSheet('Users', usersRows),
-    rowsToSheet('Locations', locationsRows),
-    rowsToSheet('Engagement', engagementRows),
+    rowsToSheet('Overview', overviewRows, utils),
+    rowsToSheet('Users', usersRows, utils),
+    rowsToSheet('Locations', locationsRows, utils),
+    rowsToSheet('Engagement', engagementRows, utils),
   ];
 
   sheets.forEach(({ name, sheet }) => {
-    XLSX.utils.book_append_sheet(workbook, sheet, name);
+    utils.book_append_sheet(workbook, sheet, name);
   });
 
   XLSX.writeFile(workbook, buildFilename(), {

@@ -15,6 +15,7 @@ export class Gist {
   @Column({ type: 'varchar', length: 100, nullable: true })
   content_hash: string | null;
 
+  @Index({ unique: true })
   @Column({ type: 'varchar', length: 80, nullable: true })
   stellar_gist_id: string | null;
 
