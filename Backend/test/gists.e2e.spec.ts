@@ -46,7 +46,7 @@ describe('Gists (e2e)', () => {
   describe('POST /gists', () => {
     it('should reject POST /gists without CSRF token', async () => {
       await request(app.getHttpServer())
-        .post('/gists')
+        .post('/v1/gists')
         .send({ content: 'e2e test gist', lat: 9.0579, lon: 7.4951 })
         .expect(403);
     });
@@ -55,7 +55,7 @@ describe('Gists (e2e)', () => {
       const csrf = await getCsrfToken(app.getHttpServer());
 
       const res = await request(app.getHttpServer())
-        .post('/gists')
+        .post('/v1/gists')
         .set('Cookie', csrf.cookie)
         .set('x-csrf-token', csrf.token)
         .send({ content: 'e2e test gist', lat: 9.0579, lon: 7.4951 })
@@ -78,7 +78,7 @@ describe('Gists (e2e)', () => {
       const csrf = await getCsrfToken(app.getHttpServer());
 
       const res = await request(app.getHttpServer())
-        .post('/gists')
+        .post('/v1/gists')
         .set('Cookie', csrf.cookie)
         .set('x-csrf-token', csrf.token)
         .send({ content: 'bad lat', lat: 999, lon: 7.4951 })
@@ -92,7 +92,7 @@ describe('Gists (e2e)', () => {
       const csrf = await getCsrfToken(app.getHttpServer());
 
       const res = await request(app.getHttpServer())
-        .post('/gists')
+        .post('/v1/gists')
         .set('Cookie', csrf.cookie)
         .set('x-csrf-token', csrf.token)
         .send({ content: 'x'.repeat(281), lat: 9.0579, lon: 7.4951 })
@@ -105,7 +105,7 @@ describe('Gists (e2e)', () => {
       const csrf = await getCsrfToken(app.getHttpServer());
 
       await request(app.getHttpServer())
-        .post('/gists')
+        .post('/v1/gists')
         .set('Cookie', csrf.cookie)
         .set('x-csrf-token', csrf.token)
         .send({ content: 'missing coords' })
@@ -116,7 +116,7 @@ describe('Gists (e2e)', () => {
       const csrf = await getCsrfToken(app.getHttpServer());
 
       await request(app.getHttpServer())
-        .post('/gists')
+        .post('/v1/gists')
         .set('Cookie', csrf.cookie)
         .set('x-csrf-token', csrf.token)
         .send({ content: 'whitelist test', lat: 9.0579, lon: 7.4951, hack: 'injected' })
@@ -134,7 +134,7 @@ describe('Gists (e2e)', () => {
     });
     it('should return paginated response with data and pagination', async () => {
       const res = await request(app.getHttpServer())
-        .get('/gists')
+        .get('/v1/gists')
         .query({ lat: 9.0579, lon: 7.4951, radius: 1000 })
         .expect(200);
 
@@ -148,12 +148,12 @@ describe('Gists (e2e)', () => {
     });
 
     it('should return 400 when lat/lon are missing', async () => {
-      await request(app.getHttpServer()).get('/gists').expect(400);
+      await request(app.getHttpServer()).get('/v1/gists').expect(400);
     });
 
     it('should respect the limit parameter', async () => {
       const res = await request(app.getHttpServer())
-        .get('/gists')
+        .get('/v1/gists')
         .query({ lat: 9.0579, lon: 7.4951, limit: 2 })
         .expect(200);
 
