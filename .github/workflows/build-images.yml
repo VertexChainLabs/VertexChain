@@ -1,0 +1,253 @@
+name: Build Multi-Arch Images
+
+# Builds linux/amd64 + linux/arm64 images for the backend and frontend
+# using Docker Buildx, publishes to GHCR on pushes to main, and produces
+# per-arch tags plus a multi-arch manifest index — satisfying issue #172.
+#
+# Acceptance criteria:
+#   docker manifest inspect ghcr.io/<owner>/vertexchain-backend:latest
+#   → lists both linux/amd64 and linux/arm64 digests.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Backend/**'
+      - 'Frontend/**'
+      - 'docker/**'
+      - '.github/workflows/build-images.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Backend/**'
+      - 'Frontend/**'
+      - 'docker/**'
+      - '.github/workflows/build-images.yml'
+
+# Cancel any in-progress run for the same ref (avoids wasting runner minutes
+# when commits are pushed rapidly).
+concurrency:
+  group: build-images-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  # Lowercased owner/repo is required by GHCR; ${{ github.repository }}
+  # is already lowercased by GitHub Actions.
+  BACKEND_IMAGE: ghcr.io/${{ github.repository_owner }}/vertexchain-backend
+  FRONTEND_IMAGE: ghcr.io/${{ github.repository_owner }}/vertexchain-frontend
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # backend — build linux/amd64 + linux/arm64 production image
+  # ---------------------------------------------------------------------------
+  build-backend:
+    name: Backend (${{ matrix.platform }})
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # QEMU lets the amd64 runner emulate arm64 at build time.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Derive a safe tag suffix from the platform string
+      # (linux/amd64 → amd64, linux/arm64 → arm64).
+      - name: Derive arch tag suffix
+        id: arch
+        run: echo "tag=$(echo '${{ matrix.platform }}' | tr '/' '-' | cut -d- -f2)" >> "$GITHUB_OUTPUT"
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.BACKEND_IMAGE }}
+          tags: |
+            type=sha,prefix=sha-,suffix=-${{ steps.arch.outputs.tag }}
+            type=ref,event=branch,suffix=-${{ steps.arch.outputs.tag }}
+            type=raw,value=latest-${{ steps.arch.outputs.tag }},enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push backend (${{ matrix.platform }})
+        uses: docker/build-push-action@v6
+        with:
+          context: ./Backend
+          file: docker/backend.Dockerfile
+          target: production
+          platforms: ${{ matrix.platform }}
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          # GHA cache is scoped per platform to avoid cross-arch cache pollution.
+          cache-from: type=gha,scope=backend-${{ steps.arch.outputs.tag }}
+          cache-to: type=gha,mode=max,scope=backend-${{ steps.arch.outputs.tag }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
+
+  # ---------------------------------------------------------------------------
+  # backend-manifest — merge per-arch digests into a single multi-arch index
+  # ---------------------------------------------------------------------------
+  backend-manifest:
+    name: Backend manifest
+    runs-on: ubuntu-latest
+    needs: build-backend
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create and push multi-arch manifest (backend)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./Backend
+          file: docker/backend.Dockerfile
+          target: production
+          platforms: linux/amd64,linux/arm64
+          push: true
+          cache-from: |
+            type=gha,scope=backend-amd64
+            type=gha,scope=backend-arm64
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:latest
+            ${{ env.BACKEND_IMAGE }}:sha-${{ github.sha }}
+            ${{ env.BACKEND_IMAGE }}:main
+          provenance: false
+
+  # ---------------------------------------------------------------------------
+  # frontend — build linux/amd64 + linux/arm64 production image
+  # ---------------------------------------------------------------------------
+  build-frontend:
+    name: Frontend (${{ matrix.platform }})
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive arch tag suffix
+        id: arch
+        run: echo "tag=$(echo '${{ matrix.platform }}' | tr '/' '-' | cut -d- -f2)" >> "$GITHUB_OUTPUT"
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.FRONTEND_IMAGE }}
+          tags: |
+            type=sha,prefix=sha-,suffix=-${{ steps.arch.outputs.tag }}
+            type=ref,event=branch,suffix=-${{ steps.arch.outputs.tag }}
+            type=raw,value=latest-${{ steps.arch.outputs.tag }},enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push frontend (${{ matrix.platform }})
+        uses: docker/build-push-action@v6
+        with:
+          context: ./Frontend
+          file: docker/frontend.Dockerfile
+          target: runner
+          platforms: ${{ matrix.platform }}
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          cache-from: type=gha,scope=frontend-${{ steps.arch.outputs.tag }}
+          cache-to: type=gha,mode=max,scope=frontend-${{ steps.arch.outputs.tag }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
+
+  # ---------------------------------------------------------------------------
+  # frontend-manifest — merge per-arch digests into a single multi-arch index
+  # ---------------------------------------------------------------------------
+  frontend-manifest:
+    name: Frontend manifest
+    runs-on: ubuntu-latest
+    needs: build-frontend
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create and push multi-arch manifest (frontend)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./Frontend
+          file: docker/frontend.Dockerfile
+          target: runner
+          platforms: linux/amd64,linux/arm64
+          push: true
+          cache-from: |
+            type=gha,scope=frontend-amd64
+            type=gha,scope=frontend-arm64
+          tags: |
+            ${{ env.FRONTEND_IMAGE }}:latest
+            ${{ env.FRONTEND_IMAGE }}:sha-${{ github.sha }}
+            ${{ env.FRONTEND_IMAGE }}:main
+          provenance: false
