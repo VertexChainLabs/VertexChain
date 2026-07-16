@@ -22,18 +22,12 @@ locals {
   current_config = lookup(local.env_config, local.current_env, local.env_config["dev"])
 }
 
-variable "app_name" {
-  description = "Application name"
-  type        = string
-  default     = "vertexchain"
-}
-
 output "workspace_name" {
   description = "Current Terraform workspace"
   value       = terraform.workspace
 }
 
-output "instance_type" {
-  description = "Instance type for current environment"
+output "workspace_instance_type" {
+  description = "Instance type for current environment (from workspace config)"
   value       = local.current_config.instance_type
 }

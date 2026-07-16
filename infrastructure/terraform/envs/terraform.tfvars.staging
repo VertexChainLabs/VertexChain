@@ -1,0 +1,36 @@
+# ──────────────────────────────────────────────
+# Staging environment — production-like, scaled-down
+# ──────────────────────────────────────────────
+
+# --- Core ---
+region       = "us-east-1"
+environment  = "staging"
+project_name = "vertexchain"
+
+# --- Networking ---
+vpc_id   = "vpc-00000000000000002"
+vpc_cidr = "10.1.0.0/16"
+
+private_subnet_ids = ["subnet-00000000000000005", "subnet-00000000000000006"]
+public_subnet_ids  = ["subnet-00000000000000007", "subnet-00000000000000008"]
+
+# --- Compute ---
+ami_id        = "ami-0c55b159cbfafe1f0"
+instance_type = "t3.small"
+
+# --- RDS ---
+db_instance_class     = "db.t3.small"
+backup_retention_days = 3
+
+# --- ElastiCache ---
+redis_node_type       = "cache.t3.small"
+redis_num_cache_nodes = 1
+
+# --- DNS / TLS ---
+domain_name     = "staging.vertexchain.io"
+api_domain      = "api.staging.vertexchain.io"
+certificate_arn = "arn:aws:acm:us-east-1:000000000000:certificate/staging-placeholder"
+
+# --- Tagging ---
+cost_center = "engineering"
+owner       = "platform-team"

@@ -1,4 +1,4 @@
-# Secrets Manager for centralized secrets storage
+# Secrets Manager for centralised secrets storage
 resource "aws_secretsmanager_secret" "app_secret" {
   name                    = "${var.app_name}-${var.environment}-secret"
   description             = "Application secrets for ${var.environment}"
@@ -19,18 +19,6 @@ resource "aws_secretsmanager_secret_version" "app_secret_version" {
   lifecycle {
     ignore_changes = [secret_string]
   }
-}
-
-variable "app_name" {
-  description = "Application name"
-  type        = string
-  default     = "vertexchain"
-}
-
-variable "environment" {
-  description = "Deployment environment"
-  type        = string
-  default     = "dev"
 }
 
 output "secret_arn" {

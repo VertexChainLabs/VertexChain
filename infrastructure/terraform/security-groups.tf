@@ -1,8 +1,3 @@
-variable "vpc_id" {
-  description = "VPC ID"
-  type        = string
-}
-
 resource "aws_security_group" "app" {
   name        = "${var.project_name}-${var.environment}-app-sg"
   description = "Security group for application servers"

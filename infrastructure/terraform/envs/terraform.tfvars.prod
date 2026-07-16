@@ -1,0 +1,36 @@
+# ──────────────────────────────────────────────
+# Production environment — full HA, multi-AZ
+# ──────────────────────────────────────────────
+
+# --- Core ---
+region       = "us-east-1"
+environment  = "prod"
+project_name = "vertexchain"
+
+# --- Networking ---
+vpc_id   = "vpc-00000000000000003"
+vpc_cidr = "10.2.0.0/16"
+
+private_subnet_ids = ["subnet-00000000000000009", "subnet-0000000000000000a", "subnet-0000000000000000b"]
+public_subnet_ids  = ["subnet-0000000000000000c", "subnet-0000000000000000d", "subnet-0000000000000000e"]
+
+# --- Compute ---
+ami_id        = "ami-0c55b159cbfafe1f0"
+instance_type = "t3.medium"
+
+# --- RDS ---
+db_instance_class     = "db.t3.medium"
+backup_retention_days = 7
+
+# --- ElastiCache (multi-node for HA) ---
+redis_node_type       = "cache.t3.medium"
+redis_num_cache_nodes = 2
+
+# --- DNS / TLS ---
+domain_name     = "vertexchain.io"
+api_domain      = "api.vertexchain.io"
+certificate_arn = "arn:aws:acm:us-east-1:000000000000:certificate/prod-placeholder"
+
+# --- Tagging ---
+cost_center = "engineering"
+owner       = "platform-team"

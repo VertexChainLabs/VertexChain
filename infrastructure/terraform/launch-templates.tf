@@ -1,14 +1,3 @@
-variable "ami_id" {
-  description = "AMI ID for EC2 instances"
-  type        = string
-}
-
-variable "instance_type" {
-  description = "EC2 instance type"
-  type        = string
-  default     = "t3.medium"
-}
-
 resource "aws_launch_template" "app" {
   name_prefix   = "${var.project_name}-${var.environment}-"
   image_id      = var.ami_id

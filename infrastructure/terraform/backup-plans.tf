@@ -1,9 +1,3 @@
-variable "backup_retention_days" {
-  description = "Number of days to retain backups"
-  type        = number
-  default     = 30
-}
-
 resource "aws_backup_plan" "weekly" {
   name = "${var.project_name}-${var.environment}-weekly-plan"
 

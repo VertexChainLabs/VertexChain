@@ -1,8 +1,3 @@
-variable "certificate_arn" {
-  description = "ACM certificate ARN for HTTPS"
-  type        = string
-}
-
 resource "aws_lb_listener" "https" {
   load_balancer_arn = aws_lb.main.arn
   port              = 443
