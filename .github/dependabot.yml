@@ -1,0 +1,66 @@
+version: 2
+updates:
+  # Node dependencies for the NestJS backend.
+  - package-ecosystem: "npm"
+    directory: "/Backend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "auto-merge"
+    # Only minor + patch auto-bump; majors need a human eye.
+    allow:
+      - dependency-type: "development"
+      - dependency-type: "indirect"
+    versioning-strategy: increase
+
+  # Node dependencies for the Next.js frontend.
+  - package-ecosystem: "npm"
+    directory: "/Frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "auto-merge"
+
+  # Node dependencies for the analytics app.
+  - package-ecosystem: "npm"
+    directory: "/analytics"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "auto-merge"
+
+  # Rust crates for the Soroban contracts.
+  - package-ecosystem: "cargo"
+    directory: "/contracts"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "auto-merge"
+
+  # Terraform provider/modules for infra.
+  - package-ecosystem: "terraform"
+    directory: "/infrastructure/terraform"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "auto-merge"
+
+  # GitHub Actions versions (keep the CI itself patched).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "auto-merge"
