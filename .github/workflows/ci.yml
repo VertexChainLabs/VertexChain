@@ -61,9 +61,9 @@ jobs:
       - name: Pin ed25519-dalek lockfile
         run: |
           # soroban-env-host allows ed25519-dalek >=2.0.0; without a lockfile
-          # Cargo may pick 3.0.0, which breaks soroban-env-host testutils.
+          # Cargo may pick 3.0.0 alongside our 2.1.1 dev-deps.
           cargo generate-lockfile
-          cargo update -p ed25519-dalek --precise 2.1.1
+          cargo update -p ed25519-dalek@3.0.0 --precise 2.1.1
           cargo tree -p ed25519-dalek
 
       - name: cargo fmt
