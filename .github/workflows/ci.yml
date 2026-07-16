@@ -25,6 +25,9 @@ on:
       - LICENSE
       - CODE_OF_CONDUCT.md
       - CONTRIBUTING.md
+  schedule:
+    # Nightly full CI run keeps the app checks fresh even without pushes.
+    - cron: "30 2 * * *"
 
 # Cancel any previous in-progress run for the same ref so we don't burn
 # runner minutes on superseded pushes while a PR is iterating.
@@ -80,94 +83,25 @@ jobs:
         run: cargo build --workspace --target wasm32-unknown-unknown --release
 
   backend:
-    name: Backend (NestJS)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: Backend
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Unit tests
-        run: npm test -- --runInBand
-
-      # `nest build` invokes tsc, so this doubles as the typecheck step.
-      - name: Build
-        run: npm run build
+    uses: ./.github/workflows/node-matrix.yml
+    with:
+      app-name: Backend (NestJS)
+      working-directory: Backend
+      verification-command: npm test -- --runInBand
 
   frontend:
-    name: Frontend (Next.js)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: Frontend
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Unit tests
-        run: npm run test
-
-      # Next.js's `build` runs the TypeScript compiler end-to-end, so this
-      # doubles as the typecheck step.
-      - name: Build
-        run: npm run build
+    uses: ./.github/workflows/node-matrix.yml
+    with:
+      app-name: Frontend (Next.js)
+      working-directory: Frontend
+      verification-command: npm run test
 
   analytics:
-    name: Analytics (Next.js)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: analytics
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Build
-        run: npm run build
+    uses: ./.github/workflows/node-matrix.yml
+    with:
+      app-name: Analytics (Next.js)
+      working-directory: analytics
+      verification-command: npm run typecheck
 
   terraform-fmt:
     name: Terraform fmt
