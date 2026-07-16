@@ -2,16 +2,41 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: vertexchain-dev
+  labels:
+    # Pod Security Standards — Restricted (https://kubernetes.io/docs/concepts/security/pod-security-standards/)
+    # enforce: blocks non-compliant pods at admission time
+    # audit:   records a violation in the audit log but does not block
+    # warn:    emits a user-facing warning but does not block
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
 ---
 apiVersion: v1
 kind: Namespace
 metadata:
   name: vertexchain-staging
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
 ---
 apiVersion: v1
 kind: Namespace
 metadata:
   name: vertexchain-prod
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
 ---
 apiVersion: v1
 kind: ResourceQuota
