@@ -1,0 +1,140 @@
+version: 2
+
+updates:
+  # ── Root workspace (chart.js, husky, etc.) ───────────────────────────────
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 10
+    rebase-strategy: auto
+    groups:
+      npm-root-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+      npm-root-major:
+        patterns:
+          - "*"
+        update-types:
+          - major
+
+  # ── Frontend (Next.js / React) ───────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /Frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 10
+    rebase-strategy: auto
+    groups:
+      frontend-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+      frontend-major:
+        patterns:
+          - "*"
+        update-types:
+          - major
+
+  # ── Backend (NestJS) ────────────────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /Backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 10
+    rebase-strategy: auto
+    groups:
+      backend-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+      backend-major:
+        patterns:
+          - "*"
+        update-types:
+          - major
+
+  # ── Analytics (Next.js) ─────────────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /analytics
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 10
+    rebase-strategy: auto
+    groups:
+      analytics-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+      analytics-major:
+        patterns:
+          - "*"
+        update-types:
+          - major
+
+  # ── Soroban / Rust contracts ─────────────────────────────────────────────
+  - package-ecosystem: cargo
+    directory: /contracts
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 10
+    rebase-strategy: auto
+    groups:
+      cargo-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+      cargo-major:
+        patterns:
+          - "*"
+        update-types:
+          - major
+
+  # ── GitHub Actions ───────────────────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 10
+    rebase-strategy: auto
+    groups:
+      actions-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+      actions-major:
+        patterns:
+          - "*"
+        update-types:
+          - major
