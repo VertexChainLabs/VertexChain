@@ -1,0 +1,15 @@
+{{- if .Values.frontend.enabled -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "vertexchain.fullname" . }}-frontend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vertexchain.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "vertexchain.componentSelectorLabels" (dict "component" "frontend" "root" .) | nindent 6 }}
+{{- end }}

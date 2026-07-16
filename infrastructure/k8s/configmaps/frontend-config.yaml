@@ -1,9 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: frontend-config
-  namespace: vertexchain-prod
-data:
-  NEXT_PUBLIC_APP_NAME: VertexChain
-  NEXT_PUBLIC_API_URL: https://api.vertexchain.app
-  NEXT_PUBLIC_CDN_URL: https://cdn.vertexchain.app
