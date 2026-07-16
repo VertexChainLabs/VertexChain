@@ -1,0 +1,31 @@
+# Staging values override
+backend:
+  replicaCount: 2
+  env:
+    NODE_ENV: staging
+    SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org"
+  secrets:
+    DATABASE_PASSWORD: "stagingpassword"
+
+frontend:
+  replicaCount: 2
+  env:
+    NODE_ENV: staging
+
+analytics:
+  replicaCount: 1
+
+ingress:
+  enabled: true
+  className: "nginx"
+  hosts:
+    - host: staging-api.vertexchain.io
+      serviceName: backend
+      paths:
+        - path: /
+          pathType: Prefix
+    - host: staging.vertexchain.io
+      serviceName: frontend
+      paths:
+        - path: /
+          pathType: Prefix
