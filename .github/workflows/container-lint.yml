@@ -1,0 +1,36 @@
+name: Container Lint
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docker/**'
+      - '.hadolint.yaml'
+      - '.github/workflows/container-lint.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docker/**'
+      - '.hadolint.yaml'
+      - '.github/workflows/container-lint.yml'
+
+concurrency:
+  group: container-lint-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  hadolint:
+    name: Hadolint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Hadolint
+        run: |
+          # Fetch the latest hadolint release if not present, but it is typically in ubuntu-latest
+          # To be safe and deterministic, we can pull the docker image and run it.
+          docker run --rm -i -v "${PWD}:/work" -w /work hadolint/hadolint:latest hadolint docker/backend.Dockerfile docker/frontend.Dockerfile
