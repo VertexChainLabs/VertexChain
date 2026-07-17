@@ -1,0 +1,15 @@
+{{- if .Values.backend.enabled -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "vertexchain.fullname" . }}-backend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vertexchain.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      {{- include "vertexchain.componentSelectorLabels" (dict "component" "backend" "root" .) | nindent 6 }}
+{{- end }}
