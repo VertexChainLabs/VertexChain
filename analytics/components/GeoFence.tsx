@@ -21,8 +21,16 @@ export default function GeoFence() {
   const [regions, setRegions] = useState<GeoRegion[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [regionName, setRegionName] = useState('');
+  const [editName, setEditName] = useState('');
 
-  useEffect(() => { setRegions(loadRegions()); }, []);
+  useEffect(() => {
+    loadRegions().then((data) => setRegions(data));
+  }, []);
+
+  useEffect(() => {
+    const active = regions.find((r) => r.id === selectedId);
+    setEditName(active ? active.name : '');
+  }, [selectedId, regions]);
 
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!drawing) return;
@@ -32,24 +40,56 @@ export default function GeoFence() {
     setCurrentPoly((prev) => [...prev, fromCanvas(x, y)]);
   };
 
-  const closePolygon = () => {
+  const closePolygon = async () => {
     if (currentPoly.length < 3) return;
     const name = regionName.trim() || `Region ${regions.length + 1}`;
-    const newRegion: GeoRegion = { id: Date.now().toString(), name, polygon: currentPoly };
-    const updated = [...regions, newRegion];
-    setRegions(updated);
-    saveRegions(updated);
-    setCurrentPoly([]);
-    setDrawing(false);
-    setRegionName('');
-    setSelectedId(newRegion.id);
+    try {
+      const res = await fetch('/api/regions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, polygon: currentPoly }),
+      });
+      if (res.ok) {
+        const newRegion = await res.json();
+        setRegions((prev) => [...prev, newRegion]);
+        setCurrentPoly([]);
+        setDrawing(false);
+        setRegionName('');
+        setSelectedId(newRegion.id);
+      }
+    } catch (err) {
+      console.error('Failed to create region:', err);
+    }
   };
 
-  const deleteRegion = (id: string) => {
-    const updated = regions.filter((r) => r.id !== id);
-    setRegions(updated);
-    saveRegions(updated);
-    if (selectedId === id) setSelectedId(null);
+  const deleteRegion = async (id: string) => {
+    try {
+      const res = await fetch(`/api/regions/${id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setRegions((prev) => prev.filter((r) => r.id !== id));
+        if (selectedId === id) setSelectedId(null);
+      }
+    } catch (err) {
+      console.error('Failed to delete region:', err);
+    }
+  };
+
+  const updateRegion = async (id: string, newName: string) => {
+    try {
+      const res = await fetch(`/api/regions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setRegions((prev) => prev.map((r) => (r.id === id ? updated : r)));
+      }
+    } catch (err) {
+      console.error('Failed to update region:', err);
+    }
   };
 
   const selected = regions.find((r) => r.id === selectedId) ?? null;
@@ -172,9 +212,26 @@ export default function GeoFence() {
       {/* Region stats */}
       {selected && (
         <div className="rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900 p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4">
-            Stats — {selected.name}
-          </h2>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500">
+              Stats — {selected.name}
+            </h2>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-900 bg-transparent"
+                placeholder="Rename region..."
+              />
+              <button
+                onClick={() => updateRegion(selected.id, editName)}
+                className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition-colors"
+              >
+                Rename
+              </button>
+            </div>
+          </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
             {[
               { label: 'Total Gists', value: stats.total, color: 'text-gray-800 dark:text-gray-100' },
