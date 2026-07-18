@@ -37,6 +37,7 @@ jobs:
           file: infrastructure/docker/postgres.Dockerfile
           push: false
           load: true
+          pull: true
           tags: vertexchain-postgres:latest
 
       - name: Run Trivy image vulnerability scan
