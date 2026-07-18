@@ -1,2 +1,4 @@
 # Suppress unpatched Go MIME Denial of Service vulnerability in base image/build agent
 CVE-2026-42504
+# Suppress unpatched Go net/mail Denial of Service vulnerability in base image/build agent
+CVE-2026-42499
