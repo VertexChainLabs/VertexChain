@@ -2,3 +2,5 @@
 CVE-2026-42504
 # Suppress unpatched Go net/mail Denial of Service vulnerability in base image/build agent
 CVE-2026-42499
+# Suppress unpatched Go vulnerability CVE-2026-39836 in base image/build agent
+CVE-2026-39836
