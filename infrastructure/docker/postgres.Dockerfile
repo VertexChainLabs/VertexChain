@@ -1,8 +1,10 @@
 # Stage 1: Build gosu with a patched Go version to fix CVE-2026-42504
 FROM golang:1.26.5-alpine AS gosu-builder
 RUN apk add --no-cache git
-ENV GOSU_VERSION=1.17
-RUN CGO_ENABLED=0 go install github.com/tianon/gosu@v$GOSU_VERSION
+WORKDIR /go/src/github.com/tianon/gosu
+RUN git clone https://github.com/tianon/gosu.git . && \
+    git checkout 1.17 && \
+    CGO_ENABLED=0 go build -ldflags '-d -s -w' -o /go/bin/gosu
 
 # Stage 2: Final postgres image
 FROM postgres:16-alpine
