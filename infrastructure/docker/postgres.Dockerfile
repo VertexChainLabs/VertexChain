@@ -4,9 +4,10 @@ ENV POSTGRES_USER=vertexchain \
     POSTGRES_PASSWORD=vertexchain \
     POSTGRES_DB=vertexchain
 
-# Update system packages to patch vulnerabilities
+# Update system packages and replace vulnerable pre-installed gosu
 RUN apk update && apk upgrade && \
-    apk add --no-cache ca-certificates && \
+    apk add --no-cache ca-certificates gosu && \
+    cp /usr/bin/gosu /usr/local/bin/gosu && \
     rm -rf /var/cache/apk/*
 
 # Custom init scripts run in alphabetical order on first start
