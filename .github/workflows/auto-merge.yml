@@ -32,7 +32,7 @@ jobs:
       contains(github.event.pull_request.labels.*.name, 'auto-merge')
     steps:
       - name: Wait for required checks to pass
-        uses: lewagon/wait-on-check-action@v1.3.1
+        uses: lewagon/wait-on-check-action@v1.8.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
