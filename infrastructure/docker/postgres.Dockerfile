@@ -8,9 +8,10 @@
 #
 # Security: gosu is rebuilt from source against a patched Go toolchain to
 # remediate CVE-2026-42504 in the binary shipped with the upstream image.
-
-ARG BUILDPLATFORM
-ARG TARGETPLATFORM
+#
+# BUILDPLATFORM and TARGETPLATFORM are automatic ARGs injected by Buildx —
+# do NOT declare them manually, that overrides them with empty strings.
+# See: https://docs.docker.com/engine/reference/builder/#automatic-platform-args-in-the-global-scope
 
 # Stage 1: Build gosu with a patched Go version to fix CVE-2026-42504.
 # Run on BUILDPLATFORM so the Go compiler executes natively (no QEMU).

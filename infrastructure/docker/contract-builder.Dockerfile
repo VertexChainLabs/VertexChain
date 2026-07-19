@@ -5,9 +5,11 @@
 # Multi-arch: the builder stage always runs on BUILDPLATFORM because the
 # output is architecture-independent WebAssembly. No QEMU emulation needed.
 # The `scratch` artifacts stage carries only the .wasm files, which are
-# platform-neutral, so no TARGETPLATFORM pin is required there either.
-
-ARG BUILDPLATFORM
+# platform-neutral.
+#
+# BUILDPLATFORM is an automatic ARG injected by Docker Buildx —
+# do NOT declare it manually, that overrides it with an empty string.
+# See: https://docs.docker.com/engine/reference/builder/#automatic-platform-args-in-the-global-scope
 
 FROM --platform=$BUILDPLATFORM rust:1.82-slim AS builder
 

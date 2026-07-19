@@ -3,12 +3,11 @@
 # VertexChain Frontend — infrastructure variant (nginx static export)
 #
 # Multi-arch: builds for linux/amd64 and linux/arm64 via `docker buildx`.
-# BUILDPLATFORM  = host platform (compile stages run here, no QEMU needed).
-# TARGETPLATFORM = target image platform (runtime stage uses this).
+# BUILDPLATFORM and TARGETPLATFORM are automatic ARGs injected by Buildx —
+# do NOT declare them manually, that overrides them with empty strings.
+# See: https://docs.docker.com/engine/reference/builder/#automatic-platform-args-in-the-global-scope
 
 ARG NODE_VERSION=20
-ARG BUILDPLATFORM
-ARG TARGETPLATFORM
 
 # ---------- deps ----------
 # Run on BUILDPLATFORM so npm/node native addons compile on the host arch.

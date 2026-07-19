@@ -23,10 +23,9 @@
 #   curl -fsS http://localhost:3000/api/health
 
 ARG NODE_VERSION=20
-# BUILDPLATFORM = the host running docker buildx (used for compile stages).
-# TARGETPLATFORM = the image platform being produced (used for runtime stages).
-ARG BUILDPLATFORM
-ARG TARGETPLATFORM
+# BUILDPLATFORM and TARGETPLATFORM are automatic ARGs injected by Docker Buildx.
+# Do NOT declare them manually — doing so overrides them with empty strings.
+# See: https://docs.docker.com/engine/reference/builder/#automatic-platform-args-in-the-global-scope
 
 # =============================================================================
 # base — minimal Alpine layer reused by every stage.
