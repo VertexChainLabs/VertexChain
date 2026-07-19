@@ -101,7 +101,7 @@ describe('Features', () => {
       });
     } else {
       // @ts-expect-error - deleting matchMedia if it wasn't originally defined
-      delete (window as any).matchMedia;
+      delete (window as { matchMedia?: unknown }).matchMedia;
     }
   })
 })
