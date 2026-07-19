@@ -21,6 +21,9 @@ edition = "2021"
 
 [workspace.dependencies]
 soroban-sdk = { version = "22.0.0", features = ["alloc"] }
+# soroban-env-host allows `ed25519-dalek >=2.0.0`, which now resolves to 3.0.0
+# and breaks host testutils. CI generates a lockfile pinned to 2.1.1 before builds.
+ed25519-dalek = { version = "=2.1.1", features = ["rand_core"] }
 
 [profile.release]
 opt-level = "z"

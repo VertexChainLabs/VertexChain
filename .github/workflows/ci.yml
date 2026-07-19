@@ -58,6 +58,14 @@ jobs:
         with:
           workspaces: contracts
 
+      - name: Pin ed25519-dalek lockfile
+        run: |
+          # soroban-env-host allows ed25519-dalek >=2.0.0; without a lockfile
+          # Cargo may pick 3.0.0 alongside our 2.1.1 dev-deps.
+          cargo generate-lockfile
+          cargo update -p ed25519-dalek@3.0.0 --precise 2.1.1
+          cargo tree -p ed25519-dalek
+
       - name: cargo fmt
         run: cargo fmt --all -- --check
 
@@ -162,6 +170,9 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Unit tests
+        run: npm run test
 
       - name: Typecheck
         run: npm run typecheck
