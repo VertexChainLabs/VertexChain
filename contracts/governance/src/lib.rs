@@ -365,7 +365,7 @@ impl GovernanceContract {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::testutils::{Address as _, Env as _, MockAllAuthsOk};
+    use soroban_sdk::testutils::{Address as _, Env as _};
     use soroban_sdk::{Address, Env, String};
 
     #[test]
@@ -397,7 +397,7 @@ mod tests {
     #[test]
     fn test_create_and_execute_proposal() {
         let env = Env::default();
-        env.mock_all_auths(MockAllAuthsOk::Ok(()));
+        env.mock_all_auths();
 
         let admin = Address::random(&env);
         let proposer = Address::random(&env);

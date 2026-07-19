@@ -461,12 +461,12 @@ impl BatchWalletContract {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::testutils::{Address as _, Env as _, MockAllAuthsOk, Ledger};
+    use soroban_sdk::testutils::{Address as _, Env as _};
     use soroban_sdk::{Address, Env, Vec};
 
     fn setup_test_env() -> (Env, Address, BatchWalletContractClient<'static>) {
         let env = Env::default();
-        env.mock_all_auths(MockAllAuthsOk::Ok(()));
+        env.mock_all_auths();
         env.ledger().with_mut(|li| {
             li.sequence_number = 12345;
         });
