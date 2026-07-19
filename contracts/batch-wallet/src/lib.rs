@@ -125,8 +125,7 @@ impl BatchWalletEvents {
             BatchStartedEvent {
                 batch_id,
                 request_count,
-            },
-            (),
+            }
         );
     }
 
@@ -135,8 +134,7 @@ impl BatchWalletEvents {
             WalletCreatedEvent {
                 wallet_id,
                 owner: owner.clone(),
-            },
-            (),
+            }
         );
     }
 
@@ -144,8 +142,7 @@ impl BatchWalletEvents {
         env.events().publish(
             WalletDuplicateEvent {
                 owner: owner.clone(),
-            },
-            (),
+            }
         );
     }
 
@@ -155,8 +152,7 @@ impl BatchWalletEvents {
                 batch_id,
                 successful,
                 failed,
-            },
-            (),
+            }
         );
     }
 
@@ -165,8 +161,7 @@ impl BatchWalletEvents {
             WalletRecoveredEvent {
                 old_owner: old_owner.clone(),
                 new_owner: new_owner.clone(),
-            },
-            (),
+            }
         );
     }
 }
@@ -471,7 +466,7 @@ mod tests {
             li.sequence_number = 12345;
         });
 
-        let contract_id = env.register_contract_wasm(None, crate::BatchWalletContract);
+        let contract_id = env.register_contract(None, crate::BatchWalletContract);
         let client = BatchWalletContractClient::new(&env, &contract_id);
 
         let admin = Address::random(&env);

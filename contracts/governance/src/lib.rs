@@ -87,8 +87,7 @@ impl GovernanceEvents {
                 previous_admin: previous_admin.clone(),
                 new_admin: new_admin.clone(),
                 timestamp: env.ledger().timestamp(),
-            },
-            (),
+            }
         );
     }
 
@@ -106,8 +105,7 @@ impl GovernanceEvents {
                 config_key: config_key.clone(),
                 config_value: config_value.clone(),
                 timestamp: env.ledger().timestamp(),
-            },
-            (),
+            }
         );
     }
 
@@ -117,8 +115,7 @@ impl GovernanceEvents {
                 id,
                 voter: voter.clone(),
                 timestamp: env.ledger().timestamp(),
-            },
-            (),
+            }
         );
     }
 
@@ -129,8 +126,7 @@ impl GovernanceEvents {
                 config_key: config_key.clone(),
                 config_value: config_value.clone(),
                 timestamp: env.ledger().timestamp(),
-            },
-            (),
+            }
         );
     }
 }
@@ -373,7 +369,7 @@ mod tests {
         let env = Env::default();
         let admin = Address::random(&env);
 
-        let contract_id = env.register_contract_wasm(None, crate::GovernanceContract);
+        let contract_id = env.register_contract(None, crate::GovernanceContract);
         let client = GovernanceContractClient::new(&env, &contract_id);
 
         client.initialize(&admin, &2);
@@ -387,7 +383,7 @@ mod tests {
         let env = Env::default();
         let admin = Address::random(&env);
 
-        let contract_id = env.register_contract_wasm(None, crate::GovernanceContract);
+        let contract_id = env.register_contract(None, crate::GovernanceContract);
         let client = GovernanceContractClient::new(&env, &contract_id);
 
         client.initialize(&admin, &2);
@@ -404,7 +400,7 @@ mod tests {
         let voter1 = Address::random(&env);
         let voter2 = Address::random(&env);
 
-        let contract_id = env.register_contract_wasm(None, crate::GovernanceContract);
+        let contract_id = env.register_contract(None, crate::GovernanceContract);
         let client = GovernanceContractClient::new(&env, &contract_id);
 
         client.initialize(&admin, &2);
