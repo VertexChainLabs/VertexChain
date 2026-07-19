@@ -2,6 +2,14 @@
 
 Please provide a short description of the change and link any related issues.
 
+## PR Title Format Guidelines (Required)
+Please ensure your PR title follows the Conventional Commits header format:
+`type(scope): subject` or `type: subject`
+- **Type** must be lowercase (e.g., `docs`, `feat`, `fix`, `chore`, `ci`, etc.).
+- **Subject** must be ≤ 72 characters.
+- *Examples*: `docs: add initial ADRs`, `feat(api): add user auth`
+
+
 ## Description
 
 - Summary of changes

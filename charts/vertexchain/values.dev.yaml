@@ -1,0 +1,21 @@
+# Development values override
+backend:
+  replicaCount: 1
+  env:
+    NODE_ENV: development
+    SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org"
+  secrets:
+    DATABASE_PASSWORD: "devpassword"
+
+frontend:
+  replicaCount: 1
+  env:
+    NODE_ENV: development
+
+analytics:
+  replicaCount: 1
+
+postgresql:
+  primary:
+    persistence:
+      enabled: false  # disable persistent storage in dev for fast boot
