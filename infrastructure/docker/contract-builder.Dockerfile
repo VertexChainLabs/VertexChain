@@ -11,7 +11,14 @@
 # do NOT declare it manually, that overrides it with an empty string.
 # See: https://docs.docker.com/engine/reference/builder/#automatic-platform-args-in-the-global-scope
 
-FROM --platform=$BUILDPLATFORM rust:1.82-slim AS builder
+FROM --platform=$BUILDPLATFORM rust:1.93-slim AS builder
+
+# soroban-cli (via openssl-sys) requires pkg-config and OpenSSL headers at
+# compile time. The rust:*-slim base is Debian slim and ships none of these.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config \
+    libssl-dev \
+ && rm -rf /var/lib/apt/lists/*
 
 RUN rustup target add wasm32v1-none \
  && cargo install soroban-cli --locked

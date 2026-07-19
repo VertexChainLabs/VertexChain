@@ -78,6 +78,11 @@ RUN npm ci --omit=dev --no-audit --no-fund
 FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-alpine AS build
 WORKDIR /usr/src/app
 COPY --from=deps /usr/src/app/node_modules ./node_modules
+# package.json must be present so that `nest build` (which runs via the
+# locally-installed @nestjs/cli in node_modules/.bin/nest) can resolve the
+# project root and locate nest-cli.json. Without it npm exits ENOENT before
+# tsc is even invoked.
+COPY package.json ./
 COPY tsconfig.json tsconfig.build.json nest-cli.json ./
 COPY src ./src
 RUN npm run build

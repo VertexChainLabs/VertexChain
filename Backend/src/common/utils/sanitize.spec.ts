@@ -262,7 +262,7 @@ describe('stripUserContent', () => {
       // Old behavior: stripHtml would keep bidi characters
       const oldBehavior = stripHtml(input);
       expect(oldBehavior).toContain('\u202E'); // Verify old behavior
-      
+
       // New behavior: stripUserContent removes them
       const newBehavior = stripUserContent(input);
       expect(newBehavior).not.toContain('\u202E');
@@ -271,10 +271,10 @@ describe('stripUserContent', () => {
 
     it('should demonstrate bidi vulnerability in old handler', () => {
       const maliciousInput = 'filename\u202Etxt.exe';
-      
+
       // Old stripHtml preserves the bidi character
       expect(stripHtml(maliciousInput)).toContain('\u202E');
-      
+
       // New stripUserContent removes it
       expect(stripUserContent(maliciousInput)).not.toContain('\u202E');
       expect(stripUserContent(maliciousInput)).toBe('filenametxt.exe');

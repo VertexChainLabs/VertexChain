@@ -70,6 +70,11 @@ RUN npm ci --no-audit --no-fund --ignore-scripts
 FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-alpine AS builder
 WORKDIR /usr/src/app
 COPY --from=deps /usr/src/app/node_modules ./node_modules
+# package.json must be present so that `next build` (invoked via the locally-
+# installed next binary in node_modules/.bin/next) can locate the project root
+# and read the `scripts` block. Without it npm exits ENOENT before Next.js
+# even starts.
+COPY package.json ./
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY next.config.ts tsconfig.json ./
 COPY src ./src

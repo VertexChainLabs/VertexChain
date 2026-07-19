@@ -14,10 +14,7 @@ describe('SorobanService', () => {
     });
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        SorobanService,
-        { provide: ConfigService, useValue: { get: configGet } },
-      ],
+      providers: [SorobanService, { provide: ConfigService, useValue: { get: configGet } }],
     }).compile();
 
     return module.get<SorobanService>(SorobanService);
