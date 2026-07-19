@@ -36,3 +36,34 @@ export function stripHtml(input: string): string {
     .replace(/&amp;/g, '&')
     .trim();
 }
+
+/**
+ * Strip user-generated content: removes HTML tags AND Unicode bidi control characters.
+ *
+ * Removes bidirectional text override characters (U+202A–U+202E, U+2066–U+2069)
+ * that can flip display order and break perceived trust in anonymous platforms.
+ *
+ * Preserves:
+ *  - All printable Unicode (including accented characters, CJK, etc.)
+ *  - Emoji and emoji ZWJ sequences
+ *  - Standard whitespace and newlines
+ *
+ * @param input - Raw user content
+ * @returns Sanitized plain text without HTML or bidi controls
+ */
+export function stripUserContent(input: string): string {
+  // First strip HTML
+  const noHtml = stripHtml(input);
+
+  // Remove Unicode bidi control characters:
+  // U+202A (LRE) - Left-to-Right Embedding
+  // U+202B (RLE) - Right-to-Left Embedding
+  // U+202C (PDF) - Pop Directional Formatting
+  // U+202D (LRO) - Left-to-Right Override
+  // U+202E (RLO) - Right-to-Left Override
+  // U+2066 (LRI) - Left-to-Right Isolate
+  // U+2067 (RLI) - Right-to-Left Isolate
+  // U+2068 (FSI) - First Strong Isolate
+  // U+2069 (PDI) - Pop Directional Isolate
+  return noHtml.replace(/[\u202A-\u202E\u2066-\u2069]/g, '');
+}
