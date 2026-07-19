@@ -42,7 +42,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           rate="$(jq -r '.failure_rate' infrastructure/monitoring/pipeline-stats-latest.json)"
-          threshold="$(jq -r '.alerts.failure_rate_threshold' infrastructure/monitoring/pipeline-metrics.json)"
+          threshold="0.2"
           compare="$(jq -n --argjson r "$rate" --argjson t "$threshold" '$r > $t')"
           if [ "$compare" = "true" ]; then
             gh issue create \
