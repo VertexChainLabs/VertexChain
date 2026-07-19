@@ -1,19 +1,34 @@
+# syntax=docker/dockerfile:1.7
+#
+# VertexChain Backend — infrastructure variant
+#
+# Multi-arch: builds for linux/amd64 and linux/arm64 via `docker buildx`.
+# BUILDPLATFORM  = host platform (compile stages run here, no QEMU needed).
+# TARGETPLATFORM = target image platform (runtime stage uses this).
+
+ARG NODE_VERSION=20
+ARG BUILDPLATFORM
+ARG TARGETPLATFORM
+
 # ---------- deps ----------
-FROM node:20-alpine AS deps
+# Run on BUILDPLATFORM so npm/node native addons compile on the host arch.
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 
 # ---------- build ----------
-FROM node:20-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
 
 # ---------- runner ----------
-FROM node:20-alpine AS runner
+# Run on TARGETPLATFORM so the final image is the correct arch.
+FROM --platform=$TARGETPLATFORM node:${NODE_VERSION}-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 RUN addgroup -g 1001 -S nodejs && adduser -S nestjs -u 1001

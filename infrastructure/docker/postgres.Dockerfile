@@ -1,4 +1,14 @@
-FROM postgres:16-alpine
+# syntax=docker/dockerfile:1.7
+#
+# VertexChain Postgres
+#
+# Multi-arch: postgres:16-alpine ships multi-arch manifests (amd64 + arm64).
+# Pinning --platform=$TARGETPLATFORM ensures the correct variant is pulled
+# when the image is built as part of a `docker buildx` multi-arch build.
+
+ARG TARGETPLATFORM
+
+FROM --platform=$TARGETPLATFORM postgres:16-alpine
 
 ENV POSTGRES_USER=vertexchain \
     POSTGRES_PASSWORD=vertexchain \
