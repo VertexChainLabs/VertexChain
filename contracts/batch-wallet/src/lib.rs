@@ -121,23 +121,53 @@ pub struct BatchWalletEvents;
 
 impl BatchWalletEvents {
     pub fn batch_started(env: &Env, batch_id: u64, request_count: u32) {
-        env.events().publish(BatchStartedEvent { batch_id, request_count }, ());
+        env.events().publish(
+            BatchStartedEvent {
+                batch_id,
+                request_count,
+            },
+            (),
+        );
     }
 
     pub fn wallet_created(env: &Env, wallet_id: u64, owner: &Address) {
-        env.events().publish(WalletCreatedEvent { wallet_id, owner: owner.clone() }, ());
+        env.events().publish(
+            WalletCreatedEvent {
+                wallet_id,
+                owner: owner.clone(),
+            },
+            (),
+        );
     }
 
     pub fn wallet_duplicate(env: &Env, owner: &Address) {
-        env.events().publish(WalletDuplicateEvent { owner: owner.clone() }, ());
+        env.events().publish(
+            WalletDuplicateEvent {
+                owner: owner.clone(),
+            },
+            (),
+        );
     }
 
     pub fn batch_completed(env: &Env, batch_id: u64, successful: u32, failed: u32) {
-        env.events().publish(BatchCompletedEvent { batch_id, successful, failed }, ());
+        env.events().publish(
+            BatchCompletedEvent {
+                batch_id,
+                successful,
+                failed,
+            },
+            (),
+        );
     }
 
     pub fn wallet_recovered(env: &Env, old_owner: &Address, new_owner: &Address) {
-        env.events().publish(WalletRecoveredEvent { old_owner: old_owner.clone(), new_owner: new_owner.clone() }, ());
+        env.events().publish(
+            WalletRecoveredEvent {
+                old_owner: old_owner.clone(),
+                new_owner: new_owner.clone(),
+            },
+            (),
+        );
     }
 }
 
