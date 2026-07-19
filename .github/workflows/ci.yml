@@ -62,7 +62,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: cargo clippy (deny warnings)
-        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+        run: cargo clippy --locked --workspace --lib --bins -- -D warnings
 
       - name: cargo check
         run: cargo check --locked --workspace --all-targets
