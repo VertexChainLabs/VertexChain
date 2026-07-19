@@ -1,7 +1,7 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
-    Env, String,
+    contract, contracterror, contractevent, contractimpl, contracttype, panic_with_error,
+    symbol_short, Address, Env, String,
 };
 
 #[derive(Clone)]
@@ -43,18 +43,51 @@ pub enum GovernanceError {
     InvalidInput = 10,
 }
 
+#[derive(Clone)]
+#[contractevent]
+pub struct AdminUpdatedEvent {
+    pub previous_admin: Address,
+    pub new_admin: Address,
+    pub timestamp: u64,
+}
+
+#[derive(Clone)]
+#[contractevent]
+pub struct ProposalCreatedEvent {
+    pub id: u32,
+    pub proposer: Address,
+    pub config_key: String,
+    pub config_value: String,
+    pub timestamp: u64,
+}
+
+#[derive(Clone)]
+#[contractevent]
+pub struct VotedEvent {
+    pub id: u32,
+    pub voter: Address,
+    pub timestamp: u64,
+}
+
+#[derive(Clone)]
+#[contractevent]
+pub struct ProposalExecutedEvent {
+    pub id: u32,
+    pub config_key: String,
+    pub config_value: String,
+    pub timestamp: u64,
+}
+
 pub struct GovernanceEvents;
 
 impl GovernanceEvents {
     pub fn admin_updated(env: &Env, previous_admin: &Address, new_admin: &Address) {
-        let topics = (symbol_short!("gov"), symbol_short!("admin"));
         env.events().publish(
-            topics,
-            (
-                previous_admin.clone(),
-                new_admin.clone(),
-                env.ledger().timestamp(),
-            ),
+            AdminUpdatedEvent {
+                previous_admin: previous_admin.clone(),
+                new_admin: new_admin.clone(),
+                timestamp: env.ledger().timestamp(),
+            }
         );
     }
 
@@ -65,35 +98,35 @@ impl GovernanceEvents {
         config_key: &String,
         config_value: &String,
     ) {
-        let topics = (symbol_short!("gov"), symbol_short!("created"));
         env.events().publish(
-            topics,
-            (
+            ProposalCreatedEvent {
                 id,
-                proposer.clone(),
-                config_key.clone(),
-                config_value.clone(),
-                env.ledger().timestamp(),
-            ),
+                proposer: proposer.clone(),
+                config_key: config_key.clone(),
+                config_value: config_value.clone(),
+                timestamp: env.ledger().timestamp(),
+            }
         );
     }
 
     pub fn voted(env: &Env, id: u32, voter: &Address) {
-        let topics = (symbol_short!("gov"), symbol_short!("voted"));
-        env.events()
-            .publish(topics, (id, voter.clone(), env.ledger().timestamp()));
+        env.events().publish(
+            VotedEvent {
+                id,
+                voter: voter.clone(),
+                timestamp: env.ledger().timestamp(),
+            }
+        );
     }
 
     pub fn proposal_executed(env: &Env, id: u32, config_key: &String, config_value: &String) {
-        let topics = (symbol_short!("gov"), symbol_short!("executed"));
         env.events().publish(
-            topics,
-            (
+            ProposalExecutedEvent {
                 id,
-                config_key.clone(),
-                config_value.clone(),
-                env.ledger().timestamp(),
-            ),
+                config_key: config_key.clone(),
+                config_value: config_value.clone(),
+                timestamp: env.ledger().timestamp(),
+            }
         );
     }
 }
@@ -328,15 +361,15 @@ impl GovernanceContract {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::testutils::{Address as _, Env as _};
     use soroban_sdk::{Address, Env, String};
 
     #[test]
     fn test_initialize() {
         let env = Env::default();
-        let admin = Address::generate(&env);
+        let admin = Address::random(&env);
 
-        let contract_id = env.register(GovernanceContract, ());
+        let contract_id = env.register_contract(None, crate::GovernanceContract);
         let client = GovernanceContractClient::new(&env, &contract_id);
 
         client.initialize(&admin, &2);
@@ -348,9 +381,9 @@ mod tests {
     #[should_panic(expected = "Error(Contract, #2)")]
     fn test_cannot_initialize_twice() {
         let env = Env::default();
-        let admin = Address::generate(&env);
+        let admin = Address::random(&env);
 
-        let contract_id = env.register(GovernanceContract, ());
+        let contract_id = env.register_contract(None, crate::GovernanceContract);
         let client = GovernanceContractClient::new(&env, &contract_id);
 
         client.initialize(&admin, &2);
@@ -362,12 +395,12 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let admin = Address::generate(&env);
-        let proposer = Address::generate(&env);
-        let voter1 = Address::generate(&env);
-        let voter2 = Address::generate(&env);
+        let admin = Address::random(&env);
+        let proposer = Address::random(&env);
+        let voter1 = Address::random(&env);
+        let voter2 = Address::random(&env);
 
-        let contract_id = env.register(GovernanceContract, ());
+        let contract_id = env.register_contract(None, crate::GovernanceContract);
         let client = GovernanceContractClient::new(&env, &contract_id);
 
         client.initialize(&admin, &2);
