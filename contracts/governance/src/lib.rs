@@ -15,13 +15,13 @@ pub enum GovernanceDataKey {
     RequiredApprovals,
     ProposalCount,
     Proposal(u32),
-    /// New: stores a VoteRecord struct per (proposal_id, voter).
-    /// Old entries stored `bool`; migrate_votes() converts them during upgrade.
+    /// New: stores a `VoteRecord` struct per (proposal_id, voter).
+    /// Old entries stored `bool`; `migrate_votes` converts them during upgrade.
     UserVote(u32, Address),
     ConfigValue(String),
-    /// New: maps a proposer Address -> Vec<u32> of their proposal IDs.
+    /// New: maps a proposer `Address` -> `Vec<u32>` of their proposal IDs.
     ProposalsByProposer(Address),
-    /// Set to `true` once migrate_votes() has run; prevents double-migration.
+    /// Set to `true` once `migrate_votes` has run; prevents double-migration.
     MigrationDone,
 }
 
@@ -367,7 +367,7 @@ pub fn get_proposals_by_proposer(env: &Env, proposer: Address) -> Vec<u32> {
 // ---------------------------------------------------------------------------
 
 /// One-shot migration that converts all pre-upgrade `bool` vote entries for
-/// the supplied `snapshot_votes` list into `VoteRecord` structs.
+/// the supplied `snapshot_votes` list into [`VoteRecord`] structs.
 ///
 /// **Design rationale**
 /// Soroban persistent storage is append-only from the runtime's perspective —
