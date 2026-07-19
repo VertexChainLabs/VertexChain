@@ -336,7 +336,7 @@ mod tests {
         let env = Env::default();
         let admin = Address::generate(&env);
 
-        let contract_id = env.register(GovernanceContract, ());
+        let contract_id = env.register_contract(None, crate::GovernanceContract);
         let client = GovernanceContractClient::new(&env, &contract_id);
 
         client.initialize(&admin, &2);
@@ -350,7 +350,7 @@ mod tests {
         let env = Env::default();
         let admin = Address::generate(&env);
 
-        let contract_id = env.register(GovernanceContract, ());
+        let contract_id = env.register_contract(None, crate::GovernanceContract);
         let client = GovernanceContractClient::new(&env, &contract_id);
 
         client.initialize(&admin, &2);
@@ -367,7 +367,7 @@ mod tests {
         let voter1 = Address::generate(&env);
         let voter2 = Address::generate(&env);
 
-        let contract_id = env.register(GovernanceContract, ());
+        let contract_id = env.register_contract(None, crate::GovernanceContract);
         let client = GovernanceContractClient::new(&env, &contract_id);
 
         client.initialize(&admin, &2);

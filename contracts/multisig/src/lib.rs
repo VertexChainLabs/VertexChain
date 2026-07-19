@@ -396,7 +396,7 @@ mod tests {
         let env = Env::default();
         let admin = Address::generate(&env);
 
-        let contract_id = env.register(MultisigContract, ());
+        let contract_id = env.register_contract(None, crate::MultisigContract);
         let client = MultisigContractClient::new(&env, &contract_id);
 
         client.initialize(&admin);
@@ -410,7 +410,7 @@ mod tests {
         let env = Env::default();
         let admin = Address::generate(&env);
 
-        let contract_id = env.register(MultisigContract, ());
+        let contract_id = env.register_contract(None, crate::MultisigContract);
         let client = MultisigContractClient::new(&env, &contract_id);
 
         client.initialize(&admin);
@@ -426,7 +426,7 @@ mod tests {
         let signer1 = Address::generate(&env);
         let signer2 = Address::generate(&env);
 
-        let contract_id = env.register(MultisigContract, ());
+        let contract_id = env.register_contract(None, crate::MultisigContract);
         let client = MultisigContractClient::new(&env, &contract_id);
 
         client.initialize(&admin);
