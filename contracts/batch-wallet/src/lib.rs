@@ -461,20 +461,20 @@ impl BatchWalletContract {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::testutils::{Address as _, Ledger};
+    use soroban_sdk::testutils::{Address as _, Env as _, MockAllAuthsOk, Ledger};
     use soroban_sdk::{Address, Env, Vec};
 
     fn setup_test_env() -> (Env, Address, BatchWalletContractClient<'static>) {
         let env = Env::default();
-        env.mock_all_auths();
+        env.mock_all_auths(MockAllAuthsOk::Ok(()));
         env.ledger().with_mut(|li| {
             li.sequence_number = 12345;
         });
 
-        let contract_id = env.register_contract(None, crate::BatchWalletContract);
+        let contract_id = env.register_contract_wasm(None, crate::BatchWalletContract);
         let client = BatchWalletContractClient::new(&env, &contract_id);
 
-        let admin = Address::generate(&env);
+        let admin = Address::random(&env);
         client.initialize(&admin);
 
         (env, admin, client)
@@ -510,7 +510,7 @@ mod tests {
     fn test_cannot_initialize_twice() {
         let (env, _admin, client) = setup_test_env();
 
-        let new_admin = Address::generate(&env);
+        let new_admin = Address::random(&env);
         client.initialize(&new_admin);
     }
 
@@ -518,7 +518,7 @@ mod tests {
     fn test_batch_create_wallets_single() {
         let (env, admin, client) = setup_test_env();
 
-        let owner = Address::generate(&env);
+        let owner = Address::random(&env);
 
         let mut requests: Vec<WalletCreateRequest> = Vec::new(&env);
         requests.push_back(create_wallet_request(&env, owner.clone()));
@@ -539,9 +539,9 @@ mod tests {
     fn test_batch_create_wallets_multiple() {
         let (env, admin, client) = setup_test_env();
 
-        let owner1 = Address::generate(&env);
-        let owner2 = Address::generate(&env);
-        let owner3 = Address::generate(&env);
+        let owner1 = Address::random(&env);
+        let owner2 = Address::random(&env);
+        let owner3 = Address::random(&env);
 
         let mut requests: Vec<WalletCreateRequest> = Vec::new(&env);
         requests.push_back(create_wallet_request(&env, owner1.clone()));
@@ -566,9 +566,9 @@ mod tests {
     fn test_batch_create_wallets_partial_failures() {
         let (env, admin, client) = setup_test_env();
 
-        let owner1 = Address::generate(&env);
-        let owner2 = Address::generate(&env);
-        let owner3 = Address::generate(&env);
+        let owner1 = Address::random(&env);
+        let owner2 = Address::random(&env);
+        let owner3 = Address::random(&env);
 
         let mut requests1: Vec<WalletCreateRequest> = Vec::new(&env);
         requests1.push_back(create_wallet_request(&env, owner1.clone()));
@@ -596,8 +596,8 @@ mod tests {
     fn test_batch_create_wallets_duplicate_in_batch() {
         let (env, admin, client) = setup_test_env();
 
-        let owner = Address::generate(&env);
-        let owner2 = Address::generate(&env);
+        let owner = Address::random(&env);
+        let owner2 = Address::random(&env);
 
         let mut requests: Vec<WalletCreateRequest> = Vec::new(&env);
         requests.push_back(create_wallet_request(&env, owner.clone()));
@@ -611,8 +611,8 @@ mod tests {
     fn test_batch_recover_wallets_single_success() {
         let (env, admin, client) = setup_test_env();
 
-        let original_owner = Address::generate(&env);
-        let new_owner = Address::generate(&env);
+        let original_owner = Address::random(&env);
+        let new_owner = Address::random(&env);
 
         let mut create_requests: Vec<WalletCreateRequest> = Vec::new(&env);
         create_requests.push_back(create_wallet_request(&env, original_owner.clone()));

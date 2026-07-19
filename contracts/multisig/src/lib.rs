@@ -388,15 +388,15 @@ impl MultisigContract {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::{Address, Env};
+    use soroban_sdk::testutils::{Address as _, Env as _, MockAllAuthsOk};
+    use soroban_sdk::{Address, Env, Vec};
 
     #[test]
     fn test_initialize() {
         let env = Env::default();
-        let admin = Address::generate(&env);
+        let admin = Address::random(&env);
 
-        let contract_id = env.register_contract(None, crate::MultisigContract);
+        let contract_id = env.register_contract_wasm(None, crate::MultisigContract);
         let client = MultisigContractClient::new(&env, &contract_id);
 
         client.initialize(&admin);
@@ -408,9 +408,9 @@ mod tests {
     #[should_panic(expected = "Error(Contract, #2)")]
     fn test_cannot_initialize_twice() {
         let env = Env::default();
-        let admin = Address::generate(&env);
+        let admin = Address::random(&env);
 
-        let contract_id = env.register_contract(None, crate::MultisigContract);
+        let contract_id = env.register_contract_wasm(None, crate::MultisigContract);
         let client = MultisigContractClient::new(&env, &contract_id);
 
         client.initialize(&admin);
@@ -420,13 +420,13 @@ mod tests {
     #[test]
     fn test_set_signers() {
         let env = Env::default();
-        env.mock_all_auths();
+        env.mock_all_auths(MockAllAuthsOk::Ok(()));
 
-        let admin = Address::generate(&env);
-        let signer1 = Address::generate(&env);
-        let signer2 = Address::generate(&env);
+        let admin = Address::random(&env);
+        let signer1 = Address::random(&env);
+        let signer2 = Address::random(&env);
 
-        let contract_id = env.register_contract(None, crate::MultisigContract);
+        let contract_id = env.register_contract_wasm(None, crate::MultisigContract);
         let client = MultisigContractClient::new(&env, &contract_id);
 
         client.initialize(&admin);

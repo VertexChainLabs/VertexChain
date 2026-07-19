@@ -101,7 +101,7 @@ mod tests {
     #[test]
     fn test_post_and_get_gist() {
         let env = Env::default();
-        let contract_id = env.register_contract(None, crate::GistRegistry);
+        let contract_id = env.register_contract_wasm(None, crate::GistRegistry);
         let client = GistRegistryClient::new(&env, &contract_id);
 
         env.ledger().set_timestamp(1_000_000);
@@ -122,7 +122,7 @@ mod tests {
     #[test]
     fn test_list_gists_by_cell() {
         let env = Env::default();
-        let contract_id = env.register_contract(None, crate::GistRegistry);
+        let contract_id = env.register_contract_wasm(None, crate::GistRegistry);
         let client = GistRegistryClient::new(&env, &contract_id);
 
         let cell_a = String::from_str(&env, "r3gx");
