@@ -22,7 +22,7 @@ license = "MIT"
 # root cause behind soroban-sdk 22 test-build failures.
 
 [workspace.dependencies]
-soroban-sdk = { version = "26.1.0", features = ["alloc"] }
+soroban-sdk = { version = "27.0.0", features = ["alloc"] }
 
 [profile.release]
 opt-level = "z"
