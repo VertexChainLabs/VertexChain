@@ -65,22 +65,22 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: cargo clippy (deny warnings)
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
       - name: cargo check
-        run: cargo check --workspace --all-targets
+        run: cargo check --locked --workspace --all-targets
 
       - name: cargo test
-        run: cargo test --workspace
+        run: cargo test --locked --workspace
 
       # Sanity check only: catches compile failures on the deploy target.
       # Does NOT run `wasm-opt` — production Soroban artifacts come from
       # `soroban contract build`, which adds the optimizer pass. Wire that
       # in if CI artifacts ever become the release source.
-      # (`--locked` is intentionally omitted: Soroban contract crates
-      # conventionally don't commit Cargo.lock.)
+      # The workspace lockfile is enforced because Soroban 22's broad
+      # transitive version ranges can otherwise select incompatible majors.
       - name: cargo build (wasm32 release)
-        run: cargo build --workspace --target wasm32-unknown-unknown --release
+        run: cargo build --locked --workspace --target wasm32-unknown-unknown --release
 
   backend:
     uses: ./.github/workflows/node-matrix.yml

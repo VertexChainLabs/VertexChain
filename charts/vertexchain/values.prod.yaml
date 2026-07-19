@@ -1,0 +1,38 @@
+# Production values override
+backend:
+  replicaCount: 3
+  env:
+    NODE_ENV: production
+    SOROBAN_RPC_URL: "https://soroban-mainnet.stellar.org"
+    STELLAR_NETWORK_PASSPHRASE: "Public Global Stellar Network ; September 2015"
+  existingSecret: "vertexchain-backend-secret"
+
+frontend:
+  replicaCount: 3
+  env:
+    NODE_ENV: production
+
+analytics:
+  replicaCount: 2
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: api.vertexchain.io
+      serviceName: backend
+      paths:
+        - path: /
+          pathType: Prefix
+    - host: vertexchain.io
+      serviceName: frontend
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: vertexchain-tls
+      hosts:
+        - api.vertexchain.io
+        - vertexchain.io
