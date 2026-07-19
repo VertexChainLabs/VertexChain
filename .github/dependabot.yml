@@ -1,5 +1,0 @@
-# Dependabot version updates are disabled for this repository.
-# To re-enable, replace the empty `updates:` list with one or more ecosystems.
-# See https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
-version: 2
-updates: []
