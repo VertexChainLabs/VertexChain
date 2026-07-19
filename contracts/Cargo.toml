@@ -10,6 +10,8 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+repository = "https://github.com/chuks68/VertexChain"
+license = "MIT"
 
 # IMPORTANT: do not reintroduce a [workspace.dev-dependencies] block here.
 # That construct is not valid Cargo syntax and is silently ignored at parse

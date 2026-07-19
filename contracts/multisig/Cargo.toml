@@ -2,6 +2,13 @@
 name = "multisig"
 version.workspace = true
 edition.workspace = true
+repository.workspace = true
+license.workspace = true
+description = "Multi-signature wallet smart contract for VertexChain on Stellar/Soroban"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
