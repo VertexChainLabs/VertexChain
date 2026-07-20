@@ -375,7 +375,6 @@ impl BatchWalletContract {
 mod tests {
     use super::*;
     use soroban_sdk::testutils::{Address as _, Ledger};
-    use soroban_sdk::{Address, Env, Vec};
 
     fn setup_test_env() -> (Env, Address, BatchWalletContractClient<'static>) {
         let env = Env::default();
