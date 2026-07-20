@@ -20,7 +20,7 @@ edition = "2021"
 # root cause behind soroban-sdk 22 test-build failures.
 
 [workspace.dependencies]
-soroban-sdk = { version = "22.1.3", features = ["alloc"] }
+soroban-sdk = { version = "22.0.11", features = ["alloc"] }
 soroban-env-host = { version = "22.1.3" }
 
 [profile.release]
