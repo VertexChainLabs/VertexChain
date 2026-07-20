@@ -1,7 +1,6 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
-    Env, Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, Address, Env, Vec,
 };
 
 #[derive(Clone)]
