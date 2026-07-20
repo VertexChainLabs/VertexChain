@@ -1,0 +1,102 @@
+{{- /*
+verify-images-job.yaml
+Pre-install / pre-upgrade hook Job that runs `cosign verify --certificate-identity-regexp`
+against the image referenced by .Values.<component>.image before the
+chart's Deployments are admitted. Satisfies issue #173's "verification
+step in helm install template" requirement.
+
+Why a Job (and not a kubectl rollout validator):
+  * Helm hooks run inline with `helm install/upgrade`, before resource
+    admission — a failed verification aborts the release cleanly.
+  * Cosign verify exits non-zero on a missing/invalid signature, which
+    surfaces as a Job failure and an explicit `helm install` reject.
+  * The same identity regexp as the GitHub-Actions keyless signing
+    flow is used, so signatures minted in CI admit at deploy time.
+
+Why every component, not just the backend:
+  * Listing the components avoids the trap of forgetting to add a
+    new image (e.g. the analytics worker) when one is added later.
+    Currently: backend, frontend. Extend the `components` slice below
+    when a new image is introduced under .Values.
+
+The hook is opt-in: when `.Values.verifyImages.enabled: false` the Job
+is not rendered. By default it is off so existing releases are not
+broken; flip on in values.prod.yaml once every shipped image carries
+a cosign signature.
+*/}}
+{{- if .Values.verifyImages.enabled -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "vertexchain.fullname" . }}-verify-images
+  labels:
+    {{- include "vertexchain.labels" . | nindent 4 }}
+    app.kubernetes.io/component: image-verification
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-status-cmd": >-
+      kubectl -n {{ .Release.Namespace }} logs job/{{ include "vertexchain.fullname" . }}-verify-images
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        {{- include "vertexchain.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: image-verification
+    spec:
+      restartPolicy: Never
+      # The Job doesn't talk to the Kubernetes API; explicitly turn the
+      # service-account token off so we don't ship it in a pod that
+      # doesn't need API access.
+      automountServiceAccountToken: false
+      containers:
+        - name: cosign-verify
+          image: {{ .Values.verifyImages.image | default "ghcr.io/sigstore/cosign:v2.4.1" }}
+          command:
+            - sh
+            - -ec
+            - |
+              set -eu
+              COMPONENTS="backend frontend"
+              for c in $COMPONENTS; do
+                repo=$(eval echo "\$VAL_${c^^}_REPO")
+                tag=$(eval echo "\$VAL_${c^^}_TAG")
+                if [ -z "$repo" ] || [ -z "$tag" ]; then
+                  echo "[$(date +%H:%M:%S)] skipping $c (repo or tag unset)"
+                  continue
+                fi
+                IMG="$repo:$tag"
+                echo "[$(date +%H:%M:%S)] verifying $c -> $IMG"
+                cosign verify \
+                  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+                  --certificate-identity-regexp 'https://github\.com/{{ default "VertexChainLabs" .Values.global.imageOwner }}/{{ default "VertexChain" .Values.global.imageRepo }}/\.{{ printf "github/workflows" }}.*@.*' \
+                  "$IMG"
+              done
+              echo "[$(date +%H:%M:%S)] all images verified"
+          env:
+            - name: VAL_BACKEND_REPO
+              value: {{ .Values.backend.image.repository | quote }}
+            - name: VAL_BACKEND_TAG
+              value: {{ default .Chart.AppVersion .Values.backend.image.tag | quote }}
+            - name: VAL_FRONTEND_REPO
+              value: {{ .Values.frontend.image.repository | quote }}
+            - name: VAL_FRONTEND_TAG
+              value: {{ default .Chart.AppVersion .Values.frontend.image.tag | quote }}
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser:      65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+{{- end }}
