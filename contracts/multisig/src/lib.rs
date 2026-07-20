@@ -354,7 +354,6 @@ impl MultisigContract {
 mod tests {
     use super::*;
     use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::{Address, Env};
 
     #[test]
     fn test_initialize() {

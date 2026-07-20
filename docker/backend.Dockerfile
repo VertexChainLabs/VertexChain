@@ -23,6 +23,9 @@
 #   docker build --target production -f docker/backend.Dockerfile Backend
 
 ARG NODE_VERSION=20
+# BUILDPLATFORM and TARGETPLATFORM are automatic ARGs injected by Docker Buildx.
+# Do NOT declare them manually — doing so overrides them with empty strings.
+# See: https://docs.docker.com/engine/reference/builder/#automatic-platform-args-in-the-global-scope
 
 # =============================================================================
 # base — minimal Alpine layer reused by every stage.
@@ -31,8 +34,10 @@ ARG NODE_VERSION=20
 #     modules; harmless but future-proofs Postgres-SSL upgrades
 #   `--no-cache` keeps the apk index out of the image, so the image never
 #   carries `/var/cache/apk/*` to begin with.
+#   `--platform=$TARGETPLATFORM` ensures the runtime base matches the target
+#   architecture when building a multi-arch image with `docker buildx`.
 # =============================================================================
-FROM node:${NODE_VERSION}-alpine AS base
+FROM --platform=$TARGETPLATFORM node:${NODE_VERSION}-alpine AS base
 WORKDIR /usr/src/app
 RUN apk add --no-cache ca-certificates tini \
  && chown node:node /usr/src/app
@@ -42,8 +47,11 @@ ENTRYPOINT ["/sbin/tini", "--"]
 # deps — install every dependency needed by compile + tests.
 # Cached independently so editing application source never invalidates this
 # heavy `node_modules` layer.
+# Cross-compilation: run on BUILDPLATFORM so native tools (esbuild, etc.)
+# always execute on the host architecture and avoid slow QEMU emulation.
 # =============================================================================
-FROM base AS deps
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-alpine AS deps
+WORKDIR /usr/src/app
 COPY package.json package-lock.json* ./
 RUN npm ci --no-audit --no-fund
 
@@ -54,8 +62,10 @@ RUN npm ci --no-audit --no-fund
 # Works because `prod-deps` inherits `base`, which sets `WORKDIR
 # /usr/src/app` — that path is what the production stage `COPY --from`
 # resolves against.
+# Cross-compilation: run on BUILDPLATFORM (same rationale as `deps`).
 # =============================================================================
-FROM base AS prod-deps
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-alpine AS prod-deps
+WORKDIR /usr/src/app
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev --no-audit --no-fund
 
@@ -63,8 +73,16 @@ RUN npm ci --omit=dev --no-audit --no-fund
 # build — compile NestJS to dist/.
 # Inherits `deps` (which has dev tooling available) so `nest build` works.
 # Output: /usr/src/app/dist
+# Cross-compilation: run on BUILDPLATFORM so tsc/nest-cli execute natively.
 # =============================================================================
-FROM deps AS build
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-alpine AS build
+WORKDIR /usr/src/app
+COPY --from=deps /usr/src/app/node_modules ./node_modules
+# package.json must be present so that `nest build` (which runs via the
+# locally-installed @nestjs/cli in node_modules/.bin/nest) can resolve the
+# project root and locate nest-cli.json. Without it npm exits ENOENT before
+# tsc is even invoked.
+COPY package.json ./
 COPY tsconfig.json tsconfig.build.json nest-cli.json ./
 COPY src ./src
 RUN npm run build
