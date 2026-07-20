@@ -27,3 +27,18 @@ provider "aws" {
     }
   }
 }
+
+# Aliased provider used for the disaster-recovery region so we can
+# provision the mirrored backup vault and KMS key there. Only the
+# resources that need cross-region presence attach to this provider.
+provider "aws" {
+  alias  = "dr"
+  region = var.dr_region
+
+  default_tags {
+    tags = {
+      Project   = "vertexchain"
+      ManagedBy = "terraform"
+    }
+  }
+}
