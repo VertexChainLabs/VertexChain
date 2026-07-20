@@ -48,6 +48,7 @@ pub enum MultiSigError {
     InsufficientBalance = 11,
     MultisigNotConfigured = 12,
     Overflow = 13,
+    SelfTransfer = 14,
 }
 
 pub struct MultisigEvents;
@@ -302,6 +303,16 @@ impl MultisigContract {
         require_signer(&env, &caller);
         ensure_multisig_configured(&env);
 
+        // Reject zero or negative amounts — they inflate storage without value.
+        if amount <= 0 {
+            panic_with_error!(&env, MultiSigError::InvalidAmount);
+        }
+
+        // Reject self-transfers — sending to yourself is a no-op and a potential grief vector.
+        if to == caller {
+            panic_with_error!(&env, MultiSigError::SelfTransfer);
+        }
+
         let tx_id = next_tx_id(&env);
         let tx = PendingTx {
             id: tx_id,
@@ -440,5 +451,100 @@ mod tests {
         let retrieved_signers = client.get_signers();
         assert_eq!(retrieved_signers.len(), 2);
         assert_eq!(client.get_threshold(), 2);
+    }
+
+    #[test]
+    // MultiSigError::InvalidAmount = 6
+    #[should_panic(expected = "Error(Contract, #6)")]
+    fn test_submit_transaction_rejects_zero_amount() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let signer1 = Address::generate(&env);
+        let signer2 = Address::generate(&env);
+        let recipient = Address::generate(&env);
+
+        let contract_id = env.register(MultisigContract, ());
+        let client = MultisigContractClient::new(&env, &contract_id);
+
+        client.initialize(&admin);
+
+        let mut signers = Vec::new(&env);
+        signers.push_back(signer1.clone());
+        signers.push_back(signer2.clone());
+        client.set_signers(&admin, &signers, &1);
+
+        // amount = 0 must be rejected with InvalidAmount (#6)
+        client.submit_transaction(
+            &signer1,
+            &recipient,
+            &0i128,
+            &symbol_short!("pay"),
+            &None,
+        );
+    }
+
+    #[test]
+    // MultiSigError::InvalidAmount = 6
+    #[should_panic(expected = "Error(Contract, #6)")]
+    fn test_submit_transaction_rejects_negative_amount() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let signer1 = Address::generate(&env);
+        let signer2 = Address::generate(&env);
+        let recipient = Address::generate(&env);
+
+        let contract_id = env.register(MultisigContract, ());
+        let client = MultisigContractClient::new(&env, &contract_id);
+
+        client.initialize(&admin);
+
+        let mut signers = Vec::new(&env);
+        signers.push_back(signer1.clone());
+        signers.push_back(signer2.clone());
+        client.set_signers(&admin, &signers, &1);
+
+        // amount = -1 must be rejected with InvalidAmount (#6)
+        client.submit_transaction(
+            &signer1,
+            &recipient,
+            &-1i128,
+            &symbol_short!("pay"),
+            &None,
+        );
+    }
+
+    #[test]
+    // MultiSigError::SelfTransfer = 14
+    #[should_panic(expected = "Error(Contract, #14)")]
+    fn test_submit_transaction_rejects_self_transfer() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let signer1 = Address::generate(&env);
+        let signer2 = Address::generate(&env);
+
+        let contract_id = env.register(MultisigContract, ());
+        let client = MultisigContractClient::new(&env, &contract_id);
+
+        client.initialize(&admin);
+
+        let mut signers = Vec::new(&env);
+        signers.push_back(signer1.clone());
+        signers.push_back(signer2.clone());
+        client.set_signers(&admin, &signers, &1);
+
+        // to == caller (signer1 -> signer1) must be rejected with SelfTransfer (#14)
+        client.submit_transaction(
+            &signer1,
+            &signer1,   // to == from
+            &100i128,
+            &symbol_short!("pay"),
+            &None,
+        );
     }
 }
