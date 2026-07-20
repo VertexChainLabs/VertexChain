@@ -48,6 +48,7 @@ pub enum MultiSigError {
     InsufficientBalance = 11,
     MultisigNotConfigured = 12,
     Overflow = 13,
+    SelfTransfer = 14,
 }
 
 mod events;
@@ -267,6 +268,14 @@ impl MultisigContract {
         require_signer(&env, &caller);
         ensure_multisig_configured(&env);
 
+        if amount <= 0 {
+            panic_with_error!(&env, MultiSigError::InvalidAmount);
+        }
+
+        if caller == to {
+            panic_with_error!(&env, MultiSigError::SelfTransfer);
+        }
+
         let tx_id = next_tx_id(&env);
         let tx = PendingTx {
             id: tx_id,
@@ -404,5 +413,85 @@ mod tests {
         let retrieved_signers = client.get_signers();
         assert_eq!(retrieved_signers.len(), 2);
         assert_eq!(client.get_threshold(), 2);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Helper: set up an initialized contract with two signers (threshold = 1).
+    // Returns (client, signer1, signer2).
+    // ---------------------------------------------------------------------------
+    fn setup_contract_with_signers(
+        env: &Env,
+    ) -> (MultisigContractClient, Address, Address) {
+        env.mock_all_auths();
+
+        let admin = Address::generate(env);
+        let signer1 = Address::generate(env);
+        let signer2 = Address::generate(env);
+
+        let contract_id = env.register(MultisigContract, ());
+        let client = MultisigContractClient::new(env, &contract_id);
+
+        client.initialize(&admin);
+
+        let mut signers = Vec::new(env);
+        signers.push_back(signer1.clone());
+        signers.push_back(signer2.clone());
+
+        // threshold = 1 so a single signer can submit
+        client.set_signers(&admin, &signers, &1);
+
+        (client, signer1, signer2)
+    }
+
+    /// submit_transaction must reject amount = 0
+    /// MultiSigError::InvalidAmount = 6
+    #[test]
+    #[should_panic(expected = "Error(Contract, #6)")]
+    fn test_submit_transaction_rejects_zero_amount() {
+        let env = Env::default();
+        let (client, signer1, signer2) = setup_contract_with_signers(&env);
+
+        client.submit_transaction(
+            &signer1,
+            &signer2,
+            &0_i128,
+            &soroban_sdk::symbol_short!("pay"),
+            &None,
+        );
+    }
+
+    /// submit_transaction must reject negative amounts
+    /// MultiSigError::InvalidAmount = 6
+    #[test]
+    #[should_panic(expected = "Error(Contract, #6)")]
+    fn test_submit_transaction_rejects_negative_amount() {
+        let env = Env::default();
+        let (client, signer1, signer2) = setup_contract_with_signers(&env);
+
+        client.submit_transaction(
+            &signer1,
+            &signer2,
+            &-1_i128,
+            &soroban_sdk::symbol_short!("pay"),
+            &None,
+        );
+    }
+
+    /// submit_transaction must reject self-transfers (caller == to)
+    /// MultiSigError::SelfTransfer = 14
+    #[test]
+    #[should_panic(expected = "Error(Contract, #14)")]
+    fn test_submit_transaction_rejects_self_transfer() {
+        let env = Env::default();
+        let (client, signer1, _) = setup_contract_with_signers(&env);
+
+        // signer sends to themselves
+        client.submit_transaction(
+            &signer1,
+            &signer1,
+            &100_i128,
+            &soroban_sdk::symbol_short!("pay"),
+            &None,
+        );
     }
 }
