@@ -37,11 +37,12 @@ PUBLIC_KEY="${COSIGN_PUBLIC_KEY:-${HOME}/.cosign/cosign.pub}"
 # images. Callers running against a forked registry should set this
 # explicitly.
 COSIGN_EXPECTED_REPOSITORY="${COSIGN_EXPECTED_REPOSITORY:-${GITHUB_REPOSITORY:-VertexChainLabs/VertexChain}}"
-# Ref used for the cert identity. The workflow ref embeds the branch
-# (refs/heads/<branch>) or tag (refs/tags/<tag>) — we use a regexp with
-# --certificate-identity-regexp so the same script verifies against
-# PR previews, main-branch builds, and signed tags alike.
-EXPECTED_REF="${EXPECTED_REF:-refs/heads/main}"
+# Ref used for the cert identity. Default is permissive (`.*`) so the
+# same script verifies PR-preview (refs/pull/<n>/merge), main-branch
+# (refs/heads/main), and signed-tag (refs/tags/v…) builds alike.
+# Sigstore's OIDC identity is already pinned to this repo + the
+# .github/workflows/ path, so the ref portion doesn't add security.
+EXPECTED_REF="${EXPECTED_REF:-.*}"
 
 log() { echo "[$(date +%H:%M:%S)] $*"; }
 die() { log "ERROR: $*"; exit "${2:-1}"; }

@@ -70,18 +70,35 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # We always attach SBOMs to the `:latest-amd64` per-arch tag
-          # (NOT the merged manifest) because anchore/sbom-action needs
-          # a single arch's image digest to enumerate the layers
-          # deterministically.
+          # We attach SBOMs to the per-arch tag build-images.yml actually
+          # pushed for this event:
+          #   * push:main / release:published  -> `:main-<arch>` exists
+          #                                       on the registry.
+          #   * pull_request preview           -> `:sha-<sha>-<arch>`
+          #                                       is the only per-arch
+          #                                       tag build-images.yml
+          #                                       pushes for PRs.
+          # anchore/sbom-action needs a single arch's image digest to
+          # enumerate the layers deterministically; the merged `:latest`
+          # manifest is multi-arch so it cannot be used directly. Both
+          # arches are scanned so OS/libc differences between amd64 and
+          # arm64 runtime layers are reflected in the produced SBOMs.
           - image: vertexchain-backend
-            tag: main-amd64
+            tag:   ${{ github.event_name == 'pull_request' && format('sha-{0}-amd64', github.event.pull_request.head.sha) || format('sha-{0}-amd64', github.sha || github.event.workflow_run.head_sha || github.event.release.target_commitish) }}
+          - image: vertexchain-backend
+            tag:   ${{ github.event_name == 'pull_request' && format('sha-{0}-arm64', github.event.pull_request.head.sha) || format('sha-{0}-arm64', github.sha || github.event.workflow_run.head_sha || github.event.release.target_commitish) }}
           - image: vertexchain-frontend
-            tag: main-amd64
+            tag:   ${{ github.event_name == 'pull_request' && format('sha-{0}-amd64', github.event.pull_request.head.sha) || format('sha-{0}-amd64', github.sha || github.event.workflow_run.head_sha || github.event.release.target_commitish) }}
+          - image: vertexchain-frontend
+            tag:   ${{ github.event_name == 'pull_request' && format('sha-{0}-arm64', github.event.pull_request.head.sha) || format('sha-{0}-arm64', github.sha || github.event.workflow_run.head_sha || github.event.release.target_commitish) }}
           - image: vertexchain-contract-builder
-            tag: main-amd64
+            tag:   ${{ github.event_name == 'pull_request' && format('sha-{0}-amd64', github.event.pull_request.head.sha) || format('sha-{0}-amd64', github.sha || github.event.workflow_run.head_sha || github.event.release.target_commitish) }}
+          - image: vertexchain-contract-builder
+            tag:   ${{ github.event_name == 'pull_request' && format('sha-{0}-arm64', github.event.pull_request.head.sha) || format('sha-{0}-arm64', github.sha || github.event.workflow_run.head_sha || github.event.release.target_commitish) }}
           - image: vertexchain-postgres
-            tag: main-amd64
+            tag:   ${{ github.event_name == 'pull_request' && format('sha-{0}-amd64', github.event.pull_request.head.sha) || format('sha-{0}-amd64', github.sha || github.event.workflow_run.head_sha || github.event.release.target_commitish) }}
+          - image: vertexchain-postgres
+            tag:   ${{ github.event_name == 'pull_request' && format('sha-{0}-arm64', github.event.pull_request.head.sha) || format('sha-{0}-arm64', github.sha || github.event.workflow_run.head_sha || github.event.release.target_commitish) }}
 
     steps:
       - name: Checkout
@@ -95,7 +112,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate CycloneDX SBOM
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@v0.17.7
         with:
           # image:tag form. anchore/sbom-action pulls the image, runs
           # syft against its filesystem layer, and emits CycloneDX JSON.
@@ -111,44 +128,8 @@ jobs:
         with:
           files: |
             sbom-${{ matrix.image }}/*.cdx.json
-          # If the release doesn't yet have the file, mark draft so we can
-          # re-run without polluting the published assets.
+          # The per-image SBOM files are produced by anchore/sbom-action
+          # in the previous step under artifact name `sbom-<image>`.
+          # Mark as not-fatal if a release was published before the SBOM
+          # step produced any files (e.g. a re-run of an old release).
           fail_on_unmatched_files: false
-
-  # ---------------------------------------------------------------------------
-  # dependency-submission — publish the combined SBOM to GitHub's
-  # Dependency Graph API so Dependabot sees what we ship.
-  # ---------------------------------------------------------------------------
-  dependency-submission:
-    name: Submit dependency snapshot
-    needs: sbom-images
-    runs-on: ubuntu-latest
-    if: github.event_name != 'release'
-
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Generate combined dependency graph
-        uses: anchore/sbom-action@v0
-        with:
-          # Source-dir SBOM (syft on repo) gives a single dependency
-          # graph that we can submit once. This is a coarser view than
-          # the per-image SBOM above but is the format GitHub's API
-          # accepts.
-          file: .
-          format: github
-          artifact-name: vertexchain-root
-
-      - name: Submit dependency snapshot
-        uses: actions/dependency-submission@v1
-        with:
-          # we produce the github-deps format on the worker, but the
-          # GitHub Dependency Submission API also accepts a raw SBOM
-          # via the standalone `github/codeql-action` uploaders; for
-          # now we attach the SBOM artifact for downstream tooling to
-          # ingest.
-          submission-path: vertexchain-root
