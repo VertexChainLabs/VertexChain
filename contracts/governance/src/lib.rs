@@ -1,7 +1,6 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
-    Env, String,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, Address, Env, String,
 };
 
 #[derive(Clone)]
@@ -277,7 +276,6 @@ impl GovernanceContract {
 mod tests {
     use super::*;
     use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::{Address, Env, String};
 
     #[test]
     fn test_initialize() {
