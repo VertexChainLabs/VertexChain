@@ -1,0 +1,48 @@
+name: Node Matrix
+
+on:
+  workflow_call:
+    inputs:
+      app-name:
+        required: true
+        type: string
+      working-directory:
+        required: true
+        type: string
+      verification-command:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  node:
+    name: ${{ inputs.app-name }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ${{ inputs.working-directory }}/.nvmrc
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: npm ci
+
+      - name: Lint
+        working-directory: ${{ inputs.working-directory }}
+        run: npm run lint
+
+      - name: Verify
+        working-directory: ${{ inputs.working-directory }}
+        run: ${{ inputs.verification-command }}
+
+      - name: Build
+        working-directory: ${{ inputs.working-directory }}
+        run: npm run build

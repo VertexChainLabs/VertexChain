@@ -1,0 +1,145 @@
+{{- /*
+Pre-install / pre-upgrade hook Job that runs `cosign verify
+--certificate-identity-regexp` against the image referenced by
+.Values.<component>.image before the chart's Deployments are admitted.
+Satisfies issue #173's "verification step in helm install template"
+requirement.
+
+Why a Job (and not a kubectl rollout validator):
+  * Helm hooks run inline with `helm install/upgrade`, before resource
+    admission — a failed verification aborts the release cleanly.
+  * Cosign verify exits non-zero on a missing/invalid signature,
+    which surfaces as a Job failure and an explicit `helm install`
+    reject.
+  * The same identity regexp as the GitHub-Actions keyless signing
+    flow is used, so signatures minted in CI admit at deploy time.
+
+Why every component, not just the backend:
+  * Listing the components avoids the trap of forgetting to add a
+    new image (e.g., the analytics worker) when one is added later.
+    Currently: backend, frontend. Extend the verification list below
+    when a new image is introduced under .Values.
+
+The hook is opt-in: when `.Values.verifyImages.enabled: false` the Job
+is not rendered. By default it is off so existing releases are not
+broken; flip on in values.prod.yaml once every shipped image carries
+a cosign signature.
+
+Why the init-container layout:
+  * The cosign ko-image (`ghcr.io/sigstore/cosign:*`) only ships
+    `/ko-app/cosign` as an executable — no shell, and `cosign` is
+    not on $PATH. Invoking the binary directly per component as init
+    containers keeps each verification an explicit, atomic, shell-
+    free call. Init containers run sequentially and a failure of any
+    one aborts the release.
+
+Why the `{{- if and ... -}}` conditional:
+  * Render nothing if a required repo or tag is unresolved, rather
+    than emitting a Pod that invents `cosign verify <repo>:` at
+    startup and fails immediately. Both backend and frontend must
+    resolve to a tag (`.image.tag` with `.Chart.AppVersion` fallback).
+*/}}
+{{- if and .Values.verifyImages.enabled
+          .Values.backend.image.repository
+          (or .Values.backend.image.tag .Chart.AppVersion)
+          .Values.frontend.image.repository
+          (or .Values.frontend.image.tag .Chart.AppVersion) -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "vertexchain.fullname" . }}-verify-images
+  labels:
+    {{- include "vertexchain.labels" . | nindent 4 }}
+    app.kubernetes.io/component: image-verification
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-status-cmd": >-
+      kubectl -n {{ .Release.Namespace }} logs job/{{ include "vertexchain.fullname" . }}-verify-images
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        {{- include "vertexchain.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: image-verification
+    spec:
+      restartPolicy: Never
+      # Pod-level hardening. Per-container securityContext is set
+      # below; the pod-level settings catch anything we miss at the
+      # per-container granularity (process namespace, fs group, etc).
+      securityContext:
+        fsGroup: 65532
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      # The Job doesn't talk to the Kubernetes API; explicitly turn the
+      # service-account token off so we don't ship it in a pod that
+      # doesn't need API access.
+      automountServiceAccountToken: false
+      # The cosign ko-image (`ghcr.io/sigstore/cosign:*`) ONLY ships
+      # `/ko-app/cosign` as an executable — no shell, and `cosign` is
+      # not on $PATH. We invoke the binary directly per component as
+      # init containers so each verification is an explicit, atomic,
+      # shell-free call (init containers run sequentially and a failure
+      # of any one aborts the release).
+      initContainers:
+        - name: verify-backend
+          image: {{ .Values.verifyImages.image | default "ghcr.io/sigstore/cosign:v2.4.1" }}
+          command:
+            - /ko-app/cosign
+            - verify
+            - --certificate-oidc-issuer
+            - https://token.actions.githubusercontent.com
+            - --certificate-identity-regexp
+            - 'https://github\.com/{{ default "VertexChainLabs" .Values.global.imageOwner }}/{{ default "VertexChain" .Values.global.imageRepo }}/\.github/workflows/.+@.+'
+            - {{ .Values.backend.image.repository }}:{{ default .Chart.AppVersion .Values.backend.image.tag | quote }}
+          resources:
+            requests: { cpu: 50m,  memory: 64Mi }
+            limits:   { cpu: 200m, memory: 128Mi }
+          securityContext:
+            runAsNonRoot: true
+            runAsUser:      65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+        - name: verify-frontend
+          image: {{ .Values.verifyImages.image | default "ghcr.io/sigstore/cosign:v2.4.1" }}
+          command:
+            - /ko-app/cosign
+            - verify
+            - --certificate-oidc-issuer
+            - https://token.actions.githubusercontent.com
+            - --certificate-identity-regexp
+            - 'https://github\.com/{{ default "VertexChainLabs" .Values.global.imageOwner }}/{{ default "VertexChain" .Values.global.imageRepo }}/\.github/workflows/.+@.+'
+            - {{ .Values.frontend.image.repository }}:{{ default .Chart.AppVersion .Values.frontend.image.tag | quote }}
+          resources:
+            requests: { cpu: 50m,  memory: 64Mi }
+            limits:   { cpu: 200m, memory: 128Mi }
+          securityContext:
+            runAsNonRoot: true
+            runAsUser:      65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+      containers:
+        # Init containers run sequentially; once both verify steps pass
+        # we still need a real `containers:` entry to keep the Job
+        # alive until completion. Use `cosign version` so this final
+        # container is also a clean exit and contributes no side
+        # effects.
+        - name: done
+          image: {{ .Values.verifyImages.image | default "ghcr.io/sigstore/cosign:v2.4.1" }}
+          command: ["/ko-app/cosign", "version"]
+          resources:
+            requests: { cpu: 25m,  memory: 32Mi }
+            limits:   { cpu: 100m, memory: 64Mi }
+          securityContext:
+            runAsNonRoot: true
+            runAsUser:      65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+{{- end }}
