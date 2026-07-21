@@ -1,0 +1,98 @@
+# .github/workflows/renovate.yml
+#
+# Runs the Renovate bot on a schedule and on demand.
+#
+# How it works
+# ─────────────────────────────────────────────────────────────────────────────
+# Renovate scans every package manager it detects (npm for Frontend, Backend,
+# analytics; Cargo for contracts; GitHub Actions for workflow files), compares
+# the installed versions against the latest available, and opens pull requests
+# for any packages that are out of date.  All grouping / automerge / label
+# rules live in renovate.json5 at the repo root.
+#
+# Required secrets
+# ─────────────────────────────────────────────────────────────────────────────
+# RENOVATE_TOKEN   – A GitHub PAT (classic) or fine-grained token with
+#                    "Contents: Read & Write" and "Pull requests: Read & Write"
+#                    scopes on this repository.  Create it at:
+#                    https://github.com/settings/tokens
+#                    then store it under Settings → Secrets and variables →
+#                    Actions → RENOVATE_TOKEN.
+#
+#                    Alternatively, install the official Renovate GitHub App
+#                    (https://github.com/apps/renovate) and remove this
+#                    workflow entirely – the App handles scheduling itself.
+#
+# Optional secrets
+# ─────────────────────────────────────────────────────────────────────────────
+# RENOVATE_GIT_AUTHOR   – "Display Name <email@example.com>" used for commits.
+#                         Defaults to "Renovate Bot <bot@renovateapp.com>".
+
+name: Renovate
+
+on:
+  # Run every day at 03:00 UTC (low-traffic window).
+  schedule:
+    - cron: "0 3 * * *"
+
+  # Allow maintainers to trigger a run manually from the Actions tab.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry-run mode (no PRs opened, just log what would change)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+# Only one Renovate run should execute at a time for a given branch to avoid
+# race conditions when multiple schedule windows overlap.
+concurrency:
+  group: renovate-${{ github.ref }}
+  cancel-in-progress: false   # do NOT cancel an in-progress run; queue instead
+
+permissions:
+  contents: read   # Renovate itself escalates via RENOVATE_TOKEN
+
+jobs:
+  renovate:
+    name: Renovate dependency scan
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # A full clone is not needed; Renovate fetches what it needs via the
+          # GitHub API.  A shallow fetch keeps this step fast.
+          fetch-depth: 1
+
+      # ── 2. Run Renovate ────────────────────────────────────────────────────
+      - name: Run Renovate
+        uses: renovatebot/github-action@v41
+        env:
+          # ── Required ───────────────────────────────────────────────────────
+          # RENOVATE_TOKEN must have Contents + Pull-requests write access.
+          RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
+
+          # ── Optional overrides ─────────────────────────────────────────────
+          # Override the git author used for Renovate commits.  Remove this env
+          # var (and the secret) if the default "Renovate Bot" author is fine.
+          RENOVATE_GIT_AUTHOR: ${{ secrets.RENOVATE_GIT_AUTHOR }}
+
+          # Surface the dry-run toggle from workflow_dispatch into Renovate.
+          # When set to "lookup" Renovate logs what it would do without opening
+          # PRs.  In all other cases (including the scheduled run) it is unset
+          # and Renovate runs normally.
+          RENOVATE_DRY_RUN: ${{ inputs.dry_run == 'true' && 'lookup' || '' }}
+
+          # Log level: "debug" is useful when troubleshooting; "info" otherwise.
+          LOG_LEVEL: info
+        with:
+          # Pin the Renovate version to get reproducible behaviour.
+          # Bump this line when a new Renovate version is available.
+          renovate-version: "38"
+          configurationFile: renovate.json5

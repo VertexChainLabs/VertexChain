@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Body,
   Param,
   Query,
@@ -11,7 +12,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
-import { ApiBody, ApiOperation, ApiTags, ApiParam } from '@nestjs/swagger';
+import { ApiBody, ApiOperation, ApiTags, ApiParam, ApiResponse } from '@nestjs/swagger';
 import { GistsService } from './gists.service';
 import { CreateGistDto } from './dto/create-gist.dto';
 import { QueryGistsDto } from './dto/query-gists.dto';
@@ -19,6 +20,7 @@ import {
   NearbyCacheControlInterceptor,
   GistIdCacheControlInterceptor,
 } from '../common/interceptors/cache-control.interceptor';
+import { UpdateGistDto } from './dto/update-gist.dto';
 
 const MAX_GISTS_PER_BATCH = 10;
 
@@ -76,5 +78,17 @@ export class GistsController {
   @ApiParam({ name: 'id', description: 'Gist UUID' })
   findOne(@Param('id') id: string) {
     return this.gistsService.findOne(id);
+  }
+
+  @Patch(':id')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @ApiOperation({
+    summary: 'Correct a gist within its 60s edit window (same author only)',
+  })
+  @ApiParam({ name: 'id', description: 'Gist UUID' })
+  @ApiResponse({ status: 403, description: 'Caller is not the original author' })
+  @ApiResponse({ status: 410, description: 'Edit window has closed' })
+  update(@Param('id') id: string, @Body() dto: UpdateGistDto) {
+    return this.gistsService.update(id, dto);
   }
 }

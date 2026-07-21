@@ -308,3 +308,19 @@ serviceAccount:
 # ---------------------------------------------------------------------------
 networkPolicy:
   enabled: false
+
+# ---------------------------------------------------------------------------
+# Image signature verification (issue #173)
+#
+# When `enabled: true`, a pre-install/pre-upgrade Hook Job runs
+# `cosign verify --certificate-identity-regexp ...` against every image
+# referenced by .Values.<component>.image before the chart's Deployments
+# are admitted. Enable per-release (e.g. in values.prod.yaml) once every
+# shipped image carries a cosign signature — opt-in so existing releases
+# are not broken.
+# ---------------------------------------------------------------------------
+verifyImages:
+  enabled: false
+  # Pin the cosign binary image used by the verification Job. Update on
+  # upstream minor upgrades; track sigstore/cosign.
+  image: ghcr.io/sigstore/cosign:v2.4.1
