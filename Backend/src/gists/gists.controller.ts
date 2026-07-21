@@ -8,12 +8,17 @@ import {
   Param,
   Query,
   ParseArrayPipe,
+  UseInterceptors,
 } from '@nestjs/common';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { ApiBody, ApiOperation, ApiTags, ApiParam } from '@nestjs/swagger';
 import { GistsService } from './gists.service';
 import { CreateGistDto } from './dto/create-gist.dto';
 import { QueryGistsDto } from './dto/query-gists.dto';
+import {
+  NearbyCacheControlInterceptor,
+  GistIdCacheControlInterceptor,
+} from '../common/interceptors/cache-control.interceptor';
 
 const MAX_GISTS_PER_BATCH = 10;
 
@@ -58,6 +63,7 @@ export class GistsController {
 
   @Get()
   @SkipThrottle()
+  @UseInterceptors(NearbyCacheControlInterceptor)
   @ApiOperation({ summary: 'Find gists near a location' })
   findNearby(@Query() query: QueryGistsDto) {
     return this.gistsService.findNearby(query);
@@ -65,6 +71,7 @@ export class GistsController {
 
   @Get(':id')
   @SkipThrottle()
+  @UseInterceptors(GistIdCacheControlInterceptor)
   @ApiOperation({ summary: 'Get a single gist by ID' })
   @ApiParam({ name: 'id', description: 'Gist UUID' })
   findOne(@Param('id') id: string) {

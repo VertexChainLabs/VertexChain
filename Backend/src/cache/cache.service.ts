@@ -133,4 +133,58 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     this.cacheHits = 0;
     this.cacheMisses = 0;
   }
+
+  /**
+   * Purge CDN cache by sending cache-tag purge requests.
+   * This method supports Fastly, Vercel, and Cloudflare.
+   * Configure CDN_PURGE_ENDPOINT and CDN_PURGE_TOKEN in .env
+   */
+  async purgeCdnTags(tags: string[]): Promise<void> {
+    if (tags.length === 0) {
+      return;
+    }
+
+    const cdnPurgeEndpoint = this.configService.get<string>('CDN_PURGE_ENDPOINT');
+    const cdnPurgeToken = this.configService.get<string>('CDN_PURGE_TOKEN');
+
+    if (!cdnPurgeEndpoint || !cdnPurgeToken) {
+      this.logger.debug(
+        'CDN_PURGE_ENDPOINT or CDN_PURGE_TOKEN not configured, skipping CDN purge',
+      );
+      return;
+    }
+
+    try {
+      // Support for different CDN providers
+      // Fastly: POST to purge endpoint with Fastly-Key header
+      // Vercel: POST to purge endpoint with Bearer token
+      // Cloudflare: POST to purge endpoint with Bearer token
+      const response = await fetch(cdnPurgeEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // Support both Fastly-Key and Authorization headers
+          ...(cdnPurgeEndpoint.includes('fastly.com')
+            ? { 'Fastly-Key': cdnPurgeToken }
+            : { Authorization: `Bearer ${cdnPurgeToken}` }),
+        },
+        body: JSON.stringify({
+          tags,
+          // Some CDNs expect different field names
+          surrogate_keys: tags, // Fastly
+          cacheTags: tags, // Vercel/Cloudflare
+        }),
+      });
+
+      if (!response.ok) {
+        this.logger.error(
+          `CDN purge failed with status ${response.status}: ${await response.text()}`,
+        );
+      } else {
+        this.logger.log(`Successfully purged CDN cache tags: ${tags.join(', ')}`);
+      }
+    } catch (error) {
+      this.logger.error(`CDN purge error: ${error.message}`);
+    }
+  }
 }

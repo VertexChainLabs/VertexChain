@@ -8,11 +8,20 @@ import { GeoModule } from '../geo/geo.module';
 import { IpfsModule } from '../ipfs/ipfs.module';
 import { SorobanModule } from '../soroban/soroban.module';
 import { CacheModule } from '../cache/cache.module';
+import {
+  NearbyCacheControlInterceptor,
+  GistIdCacheControlInterceptor,
+} from '../common/interceptors/cache-control.interceptor';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Gist]), GeoModule, IpfsModule, SorobanModule, CacheModule],
   controllers: [GistsController],
-  providers: [GistRepository, GistsService],
+  providers: [
+    GistRepository,
+    GistsService,
+    NearbyCacheControlInterceptor,
+    GistIdCacheControlInterceptor,
+  ],
   exports: [GistsService],
 })
 export class GistsModule {}
