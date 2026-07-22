@@ -1,0 +1,39 @@
+name: Disaster Recovery Dry-Run Test
+
+on:
+  schedule:
+    # Run at 00:00 on the 1st of every month
+    - cron: '0 0 1 * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run mode (if false, will perform actual failover)'
+        required: true
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  dr-failover-test:
+    name: Monthly Dry-Run Failover Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Run Failover Script
+        env:
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'true' }}
+        run: |
+          chmod +x ./infrastructure/scripts/failover.sh
+          ./infrastructure/scripts/failover.sh
