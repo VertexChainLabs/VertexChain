@@ -23,6 +23,8 @@ pub enum GovernanceDataKey {
     ProposalsByProposer(Address),
     /// Set to `true` once `migrate_votes` has run; prevents double-migration.
     MigrationDone,
+    /// Stores the list of addresses allowed to execute admin-key proposals.
+    ExecutorAllowlist,
 }
 
 // ---------------------------------------------------------------------------
@@ -72,6 +74,7 @@ pub enum GovernanceError {
     Overflow = 9,
     InvalidInput = 10,
     MigrationAlreadyDone = 11,
+    NotInExecutorAllowlist = 12,
 }
 
 // ---------------------------------------------------------------------------
@@ -308,6 +311,27 @@ pub fn vote_proposal(env: &Env, voter: Address, proposal_id: u32, against: bool)
     GovernanceEvents::voted(env, proposal_id, &voter, against);
 }
 
+fn is_admin_config_key(env: &Env, key: &String) -> bool {
+    let admin_str = String::from_str(env, "admin");
+    let required_str = String::from_str(env, "required_approvals");
+    let allowlist_str = String::from_str(env, "executor_allowlist");
+    *key == admin_str || *key == required_str || *key == allowlist_str
+}
+
+pub fn set_executor_allowlist(env: &Env, caller: Address, allowlist: Vec<Address>) {
+    require_admin(env, &caller);
+    env.storage()
+        .persistent()
+        .set(&GovernanceDataKey::ExecutorAllowlist, &allowlist);
+}
+
+pub fn get_executor_allowlist(env: &Env) -> Vec<Address> {
+    env.storage()
+        .persistent()
+        .get(&GovernanceDataKey::ExecutorAllowlist)
+        .unwrap_or_else(|| vec![env])
+}
+
 pub fn execute_proposal(env: &Env, caller: Address, proposal_id: u32) {
     caller.require_auth();
 
@@ -333,6 +357,17 @@ pub fn execute_proposal(env: &Env, caller: Address, proposal_id: u32) {
 
     if proposal.approvals < required_approvals {
         panic_with_error!(env, GovernanceError::NotEnoughApprovals);
+    }
+
+    if is_admin_config_key(env, &proposal.config_key) && caller != proposal.proposer {
+        let allowlist: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&GovernanceDataKey::ExecutorAllowlist)
+            .unwrap_or_else(|| vec![env]);
+        if !allowlist.contains(&caller) {
+            panic_with_error!(env, GovernanceError::NotInExecutorAllowlist);
+        }
     }
 
     env.storage().persistent().set(
@@ -476,6 +511,14 @@ impl GovernanceContract {
     /// Must be called by the admin; may only be called once.
     pub fn migrate_votes(env: Env, caller: Address, snapshot_votes: Vec<(u32, Address)>) {
         migrate_votes(&env, caller, snapshot_votes);
+    }
+
+    pub fn set_executor_allowlist(env: Env, caller: Address, allowlist: Vec<Address>) {
+        set_executor_allowlist(&env, caller, allowlist);
+    }
+
+    pub fn get_executor_allowlist(env: Env) -> Vec<Address> {
+        get_executor_allowlist(&env)
     }
 }
 
@@ -780,5 +823,118 @@ mod tests {
 
         let empty: Vec<(u32, Address)> = vec![&env];
         client.migrate_votes(&non_admin, &empty); // Unauthorized (#3)
+    }
+
+    // ------------------------------------------------------------------
+    // New: executor allow-list tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_executor_allowlist_initial_empty() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        let list = client.get_executor_allowlist();
+        assert_eq!(list.len(), 0);
+    }
+
+    #[test]
+    // GovernanceError::Unauthorized = 3
+    #[should_panic(expected = "Error(Contract, #3)")]
+    fn test_set_executor_allowlist_requires_admin() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let non_admin = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        let executor = Address::generate(&env);
+        let allowlist: Vec<Address> = vec![&env, executor.clone()];
+        client.set_executor_allowlist(&non_admin, &allowlist);
+    }
+
+    #[test]
+    fn test_set_executor_allowlist_succeeds_for_admin() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let executor = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        let allowlist: Vec<Address> = vec![&env, executor.clone()];
+        client.set_executor_allowlist(&admin, &allowlist);
+
+        let list = client.get_executor_allowlist();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list.get(0).unwrap(), executor);
+    }
+
+    #[test]
+    // GovernanceError::NotInExecutorAllowlist = 12
+    #[should_panic(expected = "Error(Contract, #12)")]
+    fn test_admin_key_blocked_by_non_allowlisted_caller() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer = Address::generate(&env);
+        let voter1 = Address::generate(&env);
+        let voter2 = Address::generate(&env);
+        let unauthorized = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        // Create a proposal for an admin key
+        let admin_key = s(&env, "admin");
+        // Serialize the new admin address as a string for the proposal value
+        let admin_value = s(&env, "new_admin_address");
+        let pid = client.create_proposal(&proposer, &admin_key, &admin_value, &1000);
+
+        // Get enough approvals
+        client.vote_proposal(&voter1, &pid, &false);
+        client.vote_proposal(&voter2, &pid, &false);
+
+        // Unauthorized caller tries to execute — should fail
+        client.execute_proposal(&unauthorized, &pid);
+    }
+
+    #[test]
+    fn test_admin_key_allowed_by_allowlisted_caller() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer = Address::generate(&env);
+        let voter1 = Address::generate(&env);
+        let voter2 = Address::generate(&env);
+        let executor = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        // Add executor to allow-list
+        let allowlist: Vec<Address> = vec![&env, executor.clone()];
+        client.set_executor_allowlist(&admin, &allowlist);
+
+        // Create a proposal for an admin key
+        let admin_key = s(&env, "required_approvals");
+        let admin_value = s(&env, "3");
+        let pid = client.create_proposal(&proposer, &admin_key, &admin_value, &1000);
+
+        // Get enough approvals
+        client.vote_proposal(&voter1, &pid, &false);
+        client.vote_proposal(&voter2, &pid, &false);
+
+        // Allow-listed executor executes successfully
+        client.execute_proposal(&executor, &pid);
+
+        // Verify the config was updated
+        assert_eq!(client.get_config(&admin_key), Some(admin_value));
     }
 }
