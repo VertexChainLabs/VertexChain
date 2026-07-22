@@ -22,7 +22,7 @@ export default function Breadcrumbs({ items, homeLabel = 'Home' }: BreadcrumbsPr
 
   const crumbs: BreadcrumbItem[] = items ?? [
     { label: homeLabel, href: '/' },
-    ...pathname
+    ...(pathname || '')
       .split('/')
       .filter(Boolean)
       .map((segment, i, arr) => ({

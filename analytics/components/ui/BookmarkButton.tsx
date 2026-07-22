@@ -52,9 +52,10 @@ export default function BookmarkButton() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const isBookmarked = bookmarks.some((b) => b.url === pathname);
+  const isBookmarked = pathname ? bookmarks.some((b) => b.url === pathname) : false;
 
   const toggleBookmark = () => {
+    if (!pathname) return;
     if (isBookmarked) {
       const existing = bookmarks.find((b) => b.url === pathname);
       if (existing) {
