@@ -1,0 +1,81 @@
+# infrastructure/k8s/policy/tests/pss-restricted-violation-pod.yaml
+#
+# PURPOSE: Demonstrate that PSS "restricted" enforcement rejects this pod.
+#
+# This pod violates multiple PSS restricted rules:
+#   1. securityContext.privileged: true          → disallowed at restricted
+#   2. allowPrivilegeEscalation: true            → disallowed at restricted
+#   3. runAsNonRoot: false (runs as root)        → disallowed at restricted
+#   4. seccompProfile not set                    → disallowed at restricted
+#   5. capabilities.drop does not include ALL   → disallowed at restricted
+#
+# Expected behaviour (after applying namespaces.yaml):
+#   $ kubectl apply -f pss-restricted-violation-pod.yaml
+#   Error from server (Forbidden): pods "pss-violation-test" is forbidden:
+#     violates PodSecurity "restricted:latest":
+#       privileged (container "busybox"),
+#       allowPrivilegeEscalation != false (container "busybox"),
+#       unrestricted capabilities (container "busybox"),
+#       runAsNonRoot != true (pod or container "busybox"),
+#       seccompProfile (pod or container "busybox")
+#
+# DO NOT apply this pod to a production cluster; it exists solely as a
+# policy validation fixture.
+#
+# To run the test:
+#   # 1. Ensure namespaces.yaml has been applied:
+#   kubectl apply -f infrastructure/k8s/namespaces.yaml
+#
+#   # 2. Attempt to create the violating pod (should be rejected):
+#   kubectl apply -f infrastructure/k8s/policy/tests/pss-restricted-violation-pod.yaml
+#
+#   # 3. Verify rejection — exit code should be non-zero and stderr contains
+#   #    "violates PodSecurity".
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pss-violation-test
+  namespace: default
+  labels:
+    app: pss-violation-test
+    purpose: policy-test
+  annotations:
+    description: "Intentionally violates PSS restricted — must be rejected by admission control"
+spec:
+  # Violation: host-level network namespace
+  hostNetwork: false   # set to true to add another violation; left false to keep the
+  #                      test focused on container-level violations below
+
+  containers:
+    - name: busybox
+      image: busybox:1.36
+      command: ["sh", "-c", "echo 'This pod should never run'; sleep 1"]
+
+      securityContext:
+        # Violation 1 – privileged container
+        privileged: true
+
+        # Violation 2 – privilege escalation allowed
+        allowPrivilegeEscalation: true
+
+        # Violation 3 – running as root
+        runAsNonRoot: false
+        runAsUser: 0
+
+        # Violation 4 – capabilities not dropped to ALL
+        capabilities:
+          add:
+            - NET_ADMIN   # disallowed; restricted only permits NET_BIND_SERVICE
+          # drop: [ALL]   # intentionally omitted
+
+        # Violation 5 – no seccompProfile (restricted requires RuntimeDefault or Localhost)
+        # seccompProfile: {}   # intentionally absent
+
+      resources:
+        requests:
+          cpu: "10m"
+          memory: "16Mi"
+        limits:
+          cpu: "10m"
+          memory: "16Mi"

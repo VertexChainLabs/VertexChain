@@ -1,0 +1,87 @@
+# infrastructure/k8s/namespaces.yaml
+#
+# Enforces Kubernetes Pod Security Standards (PSS) at the "restricted" level
+# on every namespace that runs VertexChain workloads.
+#
+# PSS restricted requires:
+#   - No privileged containers
+#   - No privilege escalation (allowPrivilegeEscalation: false)
+#   - Containers run as non-root (runAsNonRoot: true)
+#   - Root filesystem read-only (readOnlyRootFilesystem: true) – best-effort
+#   - seccompProfile type Runtime/Default or Localhost
+#   - No host namespaces (hostPID, hostIPC, hostNetwork)
+#   - No host ports
+#   - Capabilities dropped to ALL; only NET_BIND_SERVICE may be added
+#
+# Labels applied:
+#   pod-security.kubernetes.io/enforce: restricted   → reject violating pods at admission
+#   pod-security.kubernetes.io/audit:   restricted   → record violations in audit log
+#   pod-security.kubernetes.io/warn:    restricted   → surface warnings to kubectl users
+#
+# Docs: https://kubernetes.io/docs/concepts/security/pod-security-standards/
+#       https://kubernetes.io/docs/tasks/configure-pod-container/enforce-standards-namespace-labels/
+#
+# Apply with:
+#   kubectl apply -f infrastructure/k8s/namespaces.yaml
+#
+# Note: labeling 'default' does NOT recreate it; kubectl apply only patches labels.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── default namespace ─────────────────────────────────────────────────────────
+# The Helm chart deploys to 'default' unless --namespace is overridden.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: default
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+---
+# ── vertexchain namespace ─────────────────────────────────────────────────────
+# Dedicated production namespace; use with:
+#   helm upgrade --install vertexchain ./charts/vertexchain -n vertexchain --create-namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vertexchain
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+---
+# ── vertexchain-staging namespace ────────────────────────────────────────────
+# Staging environment; mirrors production PSS so misconfigurations are caught
+# before they reach prod.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vertexchain-staging
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+---
+# ── vertexchain-dev namespace ─────────────────────────────────────────────────
+# Development environment; enforce=baseline to keep dev ergonomics reasonable
+# while audit/warn at restricted surfaces problems early.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vertexchain-dev
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
