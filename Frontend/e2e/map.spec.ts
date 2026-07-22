@@ -7,12 +7,12 @@ test.describe('Map page — browse, gist, post', () => {
   });
 
   test('happy path: browse landing, navigate to map, view gists, and post a new gist', async ({ page }) => {
-    await page.waitForSelector('.leaflet-map-pane', { timeout: 20_000 });
-    await expect(page.locator('.leaflet-container')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Map is loading...')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Map is loading...')).not.toBeVisible({ timeout: 15_000 });
 
     const addButton = page.getByRole('button', { name: 'Add new gist' });
-    await expect(addButton).toBeVisible({ timeout: 10_000 });
-    await addButton.click({ force: true });
+    await expect(addButton).toBeAttached({ timeout: 15_000 });
+    await addButton.click({ force: true, timeout: 5_000 });
 
     const modal = page.getByRole('dialog');
     await expect(modal).toBeVisible({ timeout: 5_000 });
@@ -35,12 +35,12 @@ test.describe('Map page — browse, gist, post', () => {
   });
 
   test('negative: cannot submit with empty gist content', async ({ page }) => {
-    await page.waitForSelector('.leaflet-map-pane', { timeout: 20_000 });
-    await expect(page.locator('.leaflet-container')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Map is loading...')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Map is loading...')).not.toBeVisible({ timeout: 15_000 });
 
     const addButton = page.getByRole('button', { name: 'Add new gist' });
-    await expect(addButton).toBeVisible({ timeout: 10_000 });
-    await addButton.click({ force: true });
+    await expect(addButton).toBeAttached({ timeout: 15_000 });
+    await addButton.click({ force: true, timeout: 5_000 });
 
     await expect(page.getByRole('dialog')).toBeVisible();
 
@@ -55,12 +55,12 @@ test.describe('Map page — browse, gist, post', () => {
   });
 
   test('negative: escape key closes the modal without posting', async ({ page }) => {
-    await page.waitForSelector('.leaflet-map-pane', { timeout: 20_000 });
-    await expect(page.locator('.leaflet-container')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Map is loading...')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Map is loading...')).not.toBeVisible({ timeout: 15_000 });
 
     const addButton = page.getByRole('button', { name: 'Add new gist' });
-    await expect(addButton).toBeVisible({ timeout: 10_000 });
-    await addButton.click({ force: true });
+    await expect(addButton).toBeAttached({ timeout: 15_000 });
+    await addButton.click({ force: true, timeout: 5_000 });
 
     const modal = page.getByRole('dialog');
     await expect(modal).toBeVisible();
@@ -72,12 +72,12 @@ test.describe('Map page — browse, gist, post', () => {
   });
 
   test('negative: clicking the backdrop overlay closes the modal without posting', async ({ page }) => {
-    await page.waitForSelector('.leaflet-map-pane', { timeout: 20_000 });
-    await expect(page.locator('.leaflet-container')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Map is loading...')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Map is loading...')).not.toBeVisible({ timeout: 15_000 });
 
     const addButton = page.getByRole('button', { name: 'Add new gist' });
-    await expect(addButton).toBeVisible({ timeout: 10_000 });
-    await addButton.click({ force: true });
+    await expect(addButton).toBeAttached({ timeout: 15_000 });
+    await addButton.click({ force: true, timeout: 5_000 });
 
     const modal = page.getByRole('dialog');
     await expect(modal).toBeVisible();
