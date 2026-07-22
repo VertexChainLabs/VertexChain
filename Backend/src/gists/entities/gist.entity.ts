@@ -25,6 +25,9 @@ export class Gist {
   @Column({ type: 'varchar', length: 80, nullable: true })
   author: string | null;
 
+  @Column({ type: 'timestamptz', nullable: true })
+  author_verified_at: Date | null;
+
   @Column({ type: 'varchar', length: 100, nullable: true })
   previous_cid: string | null;
 
