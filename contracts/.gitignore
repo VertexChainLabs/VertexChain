@@ -1,6 +1,9 @@
 # Rust / Cargo
 /target
-Cargo.lock
+# Cargo.lock is intentionally tracked for this workspace.
+# The CI runs `cargo <cmd> --locked` which requires the lock file to be
+# present in the repository.  Soroban dependency ranges are broad enough
+# that an unlocked build can silently select incompatible transitive versions.
 
 # Soroban build artifacts
 *.wasm

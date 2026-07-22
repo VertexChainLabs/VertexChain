@@ -10,6 +10,8 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+repository = "https://github.com/VertexChainLabs/VertexChain"
+license = "MIT"
 
 # IMPORTANT: do not reintroduce a [workspace.dev-dependencies] block here.
 # That construct is not valid Cargo syntax and is silently ignored at parse
@@ -20,7 +22,12 @@ edition = "2021"
 # root cause behind soroban-sdk 22 test-build failures.
 
 [workspace.dependencies]
-soroban-sdk = { version = "22.0.0", features = ["alloc"] }
+# soroban-sdk 22.0.11 depends on soroban-env-host =22.1.3.
+# Pin env-host explicitly so `cargo update` cannot silently pull in an
+# incompatible version. 22.0.x env-host has a ChaCha20Rng / ed25519-dalek
+# rand_core trait mismatch that breaks compilation on Rust stable ≥ 1.82.
+soroban-sdk      = { version = "22.0.11", features = ["alloc"] }
+soroban-env-host = "=22.1.3"
 
 [profile.release]
 opt-level = "z"
