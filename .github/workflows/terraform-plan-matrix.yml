@@ -1,0 +1,206 @@
+name: Terraform Plan Matrix
+
+# Validates `terraform plan` (or `terraform validate` for fork PRs that
+# cannot access AWS credentials) against all three environments on every PR
+# that touches Terraform sources.  Each environment runs as an independent
+# parallel job so failures are scoped to the affected env.
+#
+# On push to main the matrix is also triggered so that workspace drift is
+# caught before a manual apply is run.
+
+on:
+  pull_request:
+    paths:
+      - 'infrastructure/terraform/**'
+      - '.github/workflows/terraform-plan-matrix.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'infrastructure/terraform/**'
+  workflow_dispatch:
+
+concurrency:
+  group: tf-matrix-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write      # OIDC → AWS (no-op for fork PRs)
+  contents: read
+  pull-requests: write # post plan summaries as PR comments
+
+env:
+  TF_VERSION:     '1.9.8'
+  AWS_REGION:     'us-east-1'
+  TF_WORKING_DIR: 'infrastructure/terraform'
+
+jobs:
+  # ── plan matrix ─────────────────────────────────────────────────────────────
+  plan:
+    name: Plan (${{ matrix.env }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false          # run all three even if one fails
+      matrix:
+        env: [dev, staging, prod]
+
+    environment: ${{ matrix.env }}
+
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Fork PRs cannot access environment secrets, so AWS_ROLE_ARN will be
+      # empty.  We mark this step continue-on-error so the job does not
+      # immediately fail; a later step decides whether to plan or validate.
+      - name: Configure AWS credentials (OIDC)
+        id: aws-creds
+        continue-on-error: true
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      # ── init ────────────────────────────────────────────────────────────────
+      # When AWS creds are available we initialise with the remote S3 backend.
+      # When they are absent (fork PR) we initialise in local-backend mode so
+      # `terraform validate` can still run without touching real infrastructure.
+      - name: Terraform Init (${{ matrix.env }})
+        id: init
+        run: |
+          if [ "${{ steps.aws-creds.outcome }}" = "success" ]; then
+            echo "creds_available=true" >> "$GITHUB_OUTPUT"
+            terraform init \
+              -reconfigure \
+              -backend-config="key=env/${{ matrix.env }}/terraform.tfstate" \
+              -input=false
+          else
+            echo "creds_available=false" >> "$GITHUB_OUTPUT"
+            echo "⚠️  AWS credentials unavailable (fork PR). Running terraform validate instead of plan."
+            terraform init \
+              -backend=false \
+              -input=false
+          fi
+
+      - name: Select / create workspace (${{ matrix.env }})
+        if: steps.init.outputs.creds_available == 'true'
+        run: |
+          terraform workspace select "${{ matrix.env }}" \
+            || terraform workspace new "${{ matrix.env }}"
+
+      # ── full plan (repo PRs / push to main with AWS creds) ──────────────────
+      - name: Terraform Plan (${{ matrix.env }})
+        id: plan
+        if: steps.init.outputs.creds_available == 'true'
+        run: |
+          terraform plan \
+            -var-file="envs/terraform.tfvars.${{ matrix.env }}" \
+            -input=false \
+            -no-color \
+            2>&1 | tee /tmp/plan-${{ matrix.env }}.txt
+          exit ${PIPESTATUS[0]}
+        continue-on-error: true
+
+      # ── validate-only (fork PRs without AWS creds) ──────────────────────────
+      - name: Terraform Validate (${{ matrix.env }})
+        id: validate
+        if: steps.init.outputs.creds_available == 'false'
+        run: |
+          terraform validate -no-color 2>&1 | tee /tmp/plan-${{ matrix.env }}.txt
+        continue-on-error: true
+
+      # ── PR comment ──────────────────────────────────────────────────────────
+      - name: Comment plan / validate result on PR (${{ matrix.env }})
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs     = require('fs');
+            const output = fs.readFileSync('/tmp/plan-${{ matrix.env }}.txt', 'utf8');
+
+            const hasCreds  = '${{ steps.init.outputs.creds_available }}' === 'true';
+            const planStep  = '${{ steps.plan.outcome }}';
+            const valStep   = '${{ steps.validate.outcome }}';
+            const outcome   = hasCreds ? planStep : valStep;
+            const mode      = hasCreds ? 'Plan' : 'Validate (no AWS creds — fork PR)';
+            const icon      = outcome === 'success' ? '✅' : '❌';
+
+            const body = [
+              `### ${icon} Terraform ${mode} — \`${{ matrix.env }}\``,
+              '',
+              '<details><summary>Show output</summary>',
+              '',
+              '```hcl',
+              output.slice(0, 60000),
+              '```',
+              '',
+              '</details>',
+            ].join('\n');
+
+            // Replace any previous comment for this env.
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo,
+              issue_number: context.issue.number,
+            });
+            for (const c of comments) {
+              if (
+                c.user.type === 'Bot' &&
+                c.body.includes(`Terraform`) &&
+                c.body.includes(`\`${{ matrix.env }}\``)
+              ) {
+                await github.rest.issues.deleteComment({
+                  ...context.repo,
+                  comment_id: c.id,
+                });
+              }
+            }
+
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+      # Fail the job after posting the comment so the PR check turns red on
+      # a real plan error.  Validate failures also fail the job.
+      - name: Assert plan / validate succeeded (${{ matrix.env }})
+        run: |
+          PLAN_OUTCOME="${{ steps.plan.outcome }}"
+          VAL_OUTCOME="${{ steps.validate.outcome }}"
+          HAS_CREDS="${{ steps.init.outputs.creds_available }}"
+
+          if [ "$HAS_CREDS" = "true" ] && [ "$PLAN_OUTCOME" = "failure" ]; then
+            echo "::error::terraform plan failed for environment: ${{ matrix.env }}"
+            exit 1
+          fi
+          if [ "$HAS_CREDS" = "false" ] && [ "$VAL_OUTCOME" = "failure" ]; then
+            echo "::error::terraform validate failed for environment: ${{ matrix.env }}"
+            exit 1
+          fi
+          echo "✅  ${{ matrix.env }} passed."
+
+  # ── summary gate ────────────────────────────────────────────────────────────
+  # A single status check that branch-protection rules can target instead of
+  # three individual matrix jobs.
+  all-plans-passed:
+    name: All Plans Passed
+    runs-on: ubuntu-latest
+    needs: plan
+    if: always()
+    steps:
+      - name: Check matrix result
+        run: |
+          if [[ "${{ needs.plan.result }}" != "success" ]]; then
+            echo "::error::One or more terraform plan/validate jobs failed."
+            exit 1
+          fi
+          echo "All environment plan/validate jobs passed."
