@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import AddGistModal from './AddGistModal';
 import { motion } from 'framer-motion';
+import { useCluster } from './useCluster';
 
 export interface Gist {
   id: number;
@@ -55,6 +56,12 @@ function ChangeView({
 export default function Map() {
   const [position, setPosition] = useState<[number, number]>([6.5244, 3.3792]);
   const [gists, setGists] = useState<Gist[]>([
+    ...Array.from({ length: 110 }, (_, i) => ({
+      id: i + 10,
+      content: `Synthetic gist #${i + 1} for cluster testing`,
+      lat: 6.5244 + (Math.random() - 0.5) * 0.04,
+      lng: 3.3792 + (Math.random() - 0.5) * 0.04,
+    })),
     {
       id: 1,
       content: 'Amazing suya spot just opened here!',
@@ -82,6 +89,14 @@ export default function Map() {
     );
   }, []);
 
+  const ClusterWrapper = useCluster(gists.length);
+
+  const gistMarkers = gists.map((gist) => (
+    <Marker key={gist.id} position={[gist.lat, gist.lng]} icon={blueIcon}>
+      <Popup>{gist.content}</Popup>
+    </Marker>
+  ));
+
   const handleAddGist = (content: string) => {
     const newGist: Gist = {
       id: Date.now(),
@@ -103,11 +118,7 @@ export default function Map() {
         <Marker position={position} icon={greenIcon}>
           <Popup>Your Current Location</Popup>
         </Marker>
-        {gists.map((gist) => (
-          <Marker key={gist.id} position={[gist.lat, gist.lng]} icon={blueIcon}>
-            <Popup>{gist.content}</Popup>
-          </Marker>
-        ))}
+        {ClusterWrapper ? <ClusterWrapper>{gistMarkers}</ClusterWrapper> : gistMarkers}
       </MapContainer>
 
       <motion.button
