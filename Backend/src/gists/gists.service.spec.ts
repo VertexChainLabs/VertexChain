@@ -92,7 +92,6 @@ describe('GistsService', () => {
         { content: 'First', lat: 9.0579, lon: 7.4951 },
         { content: 'Second', lat: 9.058, lon: 7.4952, author: 'GABC' },
       ];
-      const stellarVerified = null;
       geoService.encode.mockReturnValueOnce('cell-1').mockReturnValueOnce('cell-2');
       ipfsService.pinJsonBatch.mockResolvedValue([
         { cid: 'cid-1', mock: true },
