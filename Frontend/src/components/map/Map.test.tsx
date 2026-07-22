@@ -31,6 +31,8 @@ vi.mock('framer-motion', () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }))
 
+vi.mock('./useCluster', () => ({ useCluster: () => null }))
+
 vi.mock('./AddGistModal', () => ({
   default: ({ isOpen }: { isOpen: boolean }) =>
     isOpen ? <div data-testid="add-gist-modal" /> : null,
