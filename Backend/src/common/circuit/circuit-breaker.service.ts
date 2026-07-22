@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 import CircuitBreaker = require('opossum');
 
 export interface BreakerOptions {
@@ -15,11 +16,7 @@ export class CircuitBreakerService {
   private readonly logger = new Logger(CircuitBreakerService.name);
   private readonly breakers = new Map<string, CircuitBreaker>();
 
-  getOrCreate<T>(
-    name: string,
-    action: BreakerAction<T>,
-    options?: BreakerOptions,
-  ): CircuitBreaker {
+  getOrCreate<T>(name: string, action: BreakerAction<T>, options?: BreakerOptions): CircuitBreaker {
     const existing = this.breakers.get(name);
     if (existing) return existing;
 
@@ -33,7 +30,9 @@ export class CircuitBreakerService {
 
     breaker.on('open', () => this.logger.warn(`Circuit breaker "${name}" opened — degraded mode`));
     breaker.on('halfOpen', () => this.logger.log(`Circuit breaker "${name}" half-open — probing`));
-    breaker.on('close', () => this.logger.log(`Circuit breaker "${name}" closed — normal operation`));
+    breaker.on('close', () =>
+      this.logger.log(`Circuit breaker "${name}" closed — normal operation`),
+    );
 
     this.breakers.set(name, breaker);
     return breaker;
@@ -55,7 +54,11 @@ export class CircuitBreakerService {
     return states;
   }
 
-  async fire<T>(name: string, action: BreakerAction<T>, options?: BreakerOptions): Promise<T | null> {
+  async fire<T>(
+    name: string,
+    action: BreakerAction<T>,
+    options?: BreakerOptions,
+  ): Promise<T | null> {
     const breaker = this.getOrCreate(name, action, options);
 
     try {
