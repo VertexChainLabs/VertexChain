@@ -1,0 +1,141 @@
+{
+  // Renovate configuration for VertexChain
+  // Docs: https://docs.renovatebot.com/configuration-options/
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  // Extend the recommended base config which enables common best-practices
+  // (range strategies, vulnerability alerts, etc.).
+  extends: [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommitTypeAll(chore)",
+  ],
+
+  // Let Renovate raise a single "Dependency Dashboard" issue that lists all
+  // pending / blocked updates so maintainers have one central overview.
+  dependencyDashboard: true,
+
+  // Only target the default branch.
+  baseBranches: ["main"],
+
+  // Rate-limit: open at most 3 PRs concurrently and create at most 5 per
+  // hour so the review queue never gets swamped.
+  prConcurrentLimit: 3,
+  prHourlyLimit: 5,
+
+  // Automatically rebase / update PRs when the target branch changes.
+  rebaseWhen: "behind-base-branch",
+
+  // ── Labels applied to every Renovate PR ───────────────────────────────
+  labels: ["dependencies", "renovate"],
+
+  // ── Package grouping ──────────────────────────────────────────────────
+  // Keep each workspace's dependencies together so a single PR can be
+  // reviewed and merged atomically.
+  packageRules: [
+    // ── Frontend (Next.js / React) ──────────────────────────────────────
+    {
+      matchFileNames: ["Frontend/package.json"],
+      groupName: "Frontend dependencies",
+      labels: ["dependencies", "renovate", "frontend"],
+    },
+    // Separate rule to pin the Next.js framework to a minor-range update
+    // because major bumps require manual migration steps.
+    {
+      matchFileNames: ["Frontend/package.json"],
+      matchPackageNames: ["next"],
+      groupName: "Next.js (Frontend)",
+      minimumReleaseAge: "3 days",
+    },
+
+    // ── Backend (NestJS) ────────────────────────────────────────────────
+    {
+      matchFileNames: ["Backend/package.json"],
+      groupName: "Backend dependencies",
+      labels: ["dependencies", "renovate", "backend"],
+    },
+    // NestJS packages all version-bump together; keep them in their own
+    // group to avoid partial upgrades.
+    {
+      matchFileNames: ["Backend/package.json"],
+      matchPackagePrefixes: ["@nestjs/"],
+      groupName: "NestJS framework (Backend)",
+      minimumReleaseAge: "3 days",
+    },
+
+    // ── Analytics (Next.js dashboard) ──────────────────────────────────
+    {
+      matchFileNames: ["analytics/package.json"],
+      groupName: "Analytics dependencies",
+      labels: ["dependencies", "renovate", "analytics"],
+    },
+    {
+      matchFileNames: ["analytics/package.json"],
+      matchPackageNames: ["next"],
+      groupName: "Next.js (Analytics)",
+      minimumReleaseAge: "3 days",
+    },
+
+    // ── Contracts (Rust / Soroban – Cargo) ─────────────────────────────
+    {
+      matchManagers: ["cargo"],
+      matchFileNames: [
+        "contracts/Cargo.toml",
+        "contracts/**/Cargo.toml",
+      ],
+      groupName: "Contracts – Cargo dependencies",
+      labels: ["dependencies", "renovate", "contracts"],
+    },
+    // soroban-sdk has breaking changes between minor versions; require a
+    // manual decision before bumping it.
+    {
+      matchManagers: ["cargo"],
+      matchPackageNames: ["soroban-sdk"],
+      groupName: "soroban-sdk",
+      minimumReleaseAge: "7 days",
+      labels: ["dependencies", "renovate", "contracts", "major-upgrade"],
+    },
+
+    // ── Root-level / shared devDependencies ────────────────────────────
+    {
+      matchFileNames: ["package.json"],
+      groupName: "Root devDependencies",
+      labels: ["dependencies", "renovate", "root"],
+    },
+
+    // ── GitHub Actions ──────────────────────────────────────────────────
+    {
+      matchManagers: ["github-actions"],
+      groupName: "GitHub Actions",
+      labels: ["dependencies", "renovate", "ci"],
+      // Actions updates are low-risk; auto-merge patch bumps.
+      automerge: true,
+      automergeType: "pr",
+      matchUpdateTypes: ["patch"],
+    },
+
+    // ── Semantic-version strategy overrides ────────────────────────────
+    // Major bumps across all workspaces get an explicit label and a longer
+    // stabilisation period before Renovate opens the PR.
+    {
+      matchUpdateTypes: ["major"],
+      labels: ["dependencies", "renovate", "major-upgrade"],
+      minimumReleaseAge: "5 days",
+    },
+
+    // Patch updates are auto-mergeable when CI is green to reduce noise.
+    {
+      matchUpdateTypes: ["patch"],
+      automerge: true,
+      automergeType: "pr",
+    },
+  ],
+
+  // ── Vulnerability alerts ─────────────────────────────────────────────
+  // Open a PR immediately (bypassing schedule) for any package with a
+  // known CVE so security fixes are never delayed.
+  vulnerabilityAlerts: {
+    enabled: true,
+    labels: ["security", "renovate"],
+  },
+}

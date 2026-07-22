@@ -23,6 +23,9 @@
 #   curl -fsS http://localhost:3000/api/health
 
 ARG NODE_VERSION=20
+# BUILDPLATFORM and TARGETPLATFORM are automatic ARGs injected by Docker Buildx.
+# Do NOT declare them manually — doing so overrides them with empty strings.
+# See: https://docs.docker.com/engine/reference/builder/#automatic-platform-args-in-the-global-scope
 
 # =============================================================================
 # base — minimal Alpine layer reused by every stage.
@@ -30,8 +33,10 @@ ARG NODE_VERSION=20
 #   • libc6-compat: Next.js / sharp native shims link against glibc;
 #     Alpine ships musl, so the compat layer is needed at runtime.
 #   `--no-cache` keeps the apk index out of the image.
+#   `--platform=$TARGETPLATFORM` ensures the runtime base matches the target
+#   architecture when building a multi-arch image with `docker buildx`.
 # =============================================================================
-FROM node:${NODE_VERSION}-alpine AS base
+FROM --platform=$TARGETPLATFORM node:${NODE_VERSION}-alpine AS base
 WORKDIR /usr/src/app
 RUN apk add --no-cache libc6-compat tini \
  && chown node:node /usr/src/app
@@ -43,14 +48,16 @@ ENTRYPOINT ["/sbin/tini", "--"]
 # editing application source never invalidates this heavy `node_modules`
 # layer. `--ignore-scripts` skips postinstall hooks (autoprefixer,
 # husky, …) since none of them are required for the standalone build.
+# Cross-compilation: run on BUILDPLATFORM so native tools (esbuild, etc.)
+# always execute on the host architecture and avoid slow QEMU emulation.
 # =============================================================================
-FROM base AS deps
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-alpine AS deps
+WORKDIR /usr/src/app
 COPY package.json package-lock.json* ./
 RUN npm ci --no-audit --no-fund --ignore-scripts
 
 # =============================================================================
 # builder — compile Next.js to `.next/standalone` + `.next/static`.
-#   • Inherits `deps` (node_modules + Workbox/Turbopack tooling).
 #   • `NEXT_TELEMETRY_DISABLED=1` opts the build out of anonymous
 #     telemetry events to https://telemetry.nextjs.org.
 #   • `npm run build` runs `next build`, which performs output-file
@@ -58,8 +65,16 @@ RUN npm ci --no-audit --no-fund --ignore-scripts
 #         .next/standalone/  – server.js + traced node_modules + .next/server
 #         .next/static/      – hashed client bundles (kept separately)
 #         public/            – user-authored static assets (kept separately)
+# Cross-compilation: run on BUILDPLATFORM so tsc/next-cli execute natively.
 # =============================================================================
-FROM deps AS builder
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-alpine AS builder
+WORKDIR /usr/src/app
+COPY --from=deps /usr/src/app/node_modules ./node_modules
+# package.json must be present so that `next build` (invoked via the locally-
+# installed next binary in node_modules/.bin/next) can locate the project root
+# and read the `scripts` block. Without it npm exits ENOENT before Next.js
+# even starts.
+COPY package.json ./
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY next.config.ts tsconfig.json ./
 COPY src ./src

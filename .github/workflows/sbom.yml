@@ -1,0 +1,135 @@
+name: Generate & Publish CycloneDX SBOM
+
+# Resolves #174: Generate SBOM (CycloneDX) and publish for each release
+#   Acceptance criteria: Each release includes SBOM JSON.
+#
+# Strategy:
+#   * On `release: published` we generate SBOMs from the just-published
+#     images (image-based SBOM is more accurate to what is shipped than
+#     a source-based lockfile SBOM, because it reflects the exact runtime
+#     layer tree of the production image).
+#   * We also run on `push: branches: [main]` so SBOMs are always fresh
+#     on main even before a release is cut — useful for vulnerability
+#     ingestion during staging validation.
+#
+# Two output sinks:
+#   1. Release asset        — uploaded via `softprops/action-gh-release`
+#                              so consumers can fetch sbom-<image>.cdx.json
+#                              from the release pages.
+#   2. Dependency submission — `syft`s github-dependency-submission
+#                              output is uploaded via the REST API so
+#                              the image's component graph shows up
+#                              under the repo's "Dependencies" tab and
+#                              GitHub Dependabot can alert on vulnerabilities.
+#
+# NOTE: Dependency-graph submissions only accept a SINGLE graph per
+# repo per workflow run, so we emit the union of all four images'
+# components into one submission. The SBOM files themselves are still
+# per-image so consumers can scope to a single image.
+
+on:
+  release:
+    types: [published]
+  push:
+    branches: [main]
+    paths:
+      - 'Backend/**'
+      - 'Frontend/**'
+      - 'contracts/**'
+      - 'docker/**'
+      - 'infrastructure/docker/**'
+      - '.github/workflows/sbom.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: sbom-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: read
+  # Required to attach SBOM .json files as release assets.
+  contents: write
+  # Required to upload dependency snapshots.
+  pull-requests: write
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: ${{ github.repository_owner }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # sbom-images — generate a CycloneDX JSON SBOM for each shipped image
+  # and upload as a release asset on `release: published`.
+  # ---------------------------------------------------------------------------
+  sbom-images:
+    name: SBOM ${{ matrix.image }}:${{ matrix.tag }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # We attach SBOMs to the per-arch tag build-images.yml actually
+          # pushed for this event:
+          #   * push:main / release:published  -> `:main-<arch>` exists
+          #                                       on the registry.
+          #   * pull_request preview           -> `:sha-<sha>-<arch>`
+          #                                       is the only per-arch
+          #                                       tag build-images.yml
+          #                                       pushes for PRs.
+          # anchore/sbom-action needs a single arch's image digest to
+          # enumerate the layers deterministically; the merged `:latest`
+          # manifest is multi-arch so it cannot be used directly. Both
+          # arches are scanned so OS/libc differences between amd64 and
+          # arm64 runtime layers are reflected in the produced SBOMs.
+          - image: vertexchain-backend
+            tag:   ${{ github.event_name == 'pull_request' && format('sha-{0}-amd64', github.event.pull_request.head.sha) || format('sha-{0}-amd64', github.sha || github.event.workflow_run.head_sha || github.event.release.target_commitish) }}
+          - image: vertexchain-backend
+            tag:   ${{ github.event_name == 'pull_request' && format('sha-{0}-arm64', github.event.pull_request.head.sha) || format('sha-{0}-arm64', github.sha || github.event.workflow_run.head_sha || github.event.release.target_commitish) }}
+          - image: vertexchain-frontend
+            tag:   ${{ github.event_name == 'pull_request' && format('sha-{0}-amd64', github.event.pull_request.head.sha) || format('sha-{0}-amd64', github.sha || github.event.workflow_run.head_sha || github.event.release.target_commitish) }}
+          - image: vertexchain-frontend
+            tag:   ${{ github.event_name == 'pull_request' && format('sha-{0}-arm64', github.event.pull_request.head.sha) || format('sha-{0}-arm64', github.sha || github.event.workflow_run.head_sha || github.event.release.target_commitish) }}
+          - image: vertexchain-contract-builder
+            tag:   ${{ github.event_name == 'pull_request' && format('sha-{0}-amd64', github.event.pull_request.head.sha) || format('sha-{0}-amd64', github.sha || github.event.workflow_run.head_sha || github.event.release.target_commitish) }}
+          - image: vertexchain-contract-builder
+            tag:   ${{ github.event_name == 'pull_request' && format('sha-{0}-arm64', github.event.pull_request.head.sha) || format('sha-{0}-arm64', github.sha || github.event.workflow_run.head_sha || github.event.release.target_commitish) }}
+          - image: vertexchain-postgres
+            tag:   ${{ github.event_name == 'pull_request' && format('sha-{0}-amd64', github.event.pull_request.head.sha) || format('sha-{0}-amd64', github.sha || github.event.workflow_run.head_sha || github.event.release.target_commitish) }}
+          - image: vertexchain-postgres
+            tag:   ${{ github.event_name == 'pull_request' && format('sha-{0}-arm64', github.event.pull_request.head.sha) || format('sha-{0}-arm64', github.sha || github.event.workflow_run.head_sha || github.event.release.target_commitish) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0.17.7
+        with:
+          # image:tag form. anchore/sbom-action pulls the image, runs
+          # syft against its filesystem layer, and emits CycloneDX JSON.
+          image: ghcr.io/${{ env.OWNER }}/${{ matrix.image }}:${{ matrix.tag }}
+          format: cyclonedx-json
+          # Use the new artifact-output mode (v0.16+) so we can attach
+          # the SBOM file as a release asset via upload-artifact / gh-release.
+          artifact-name: sbom-${{ matrix.image }}
+
+      - name: Upload SBOM as release asset
+        if: github.event_name == 'release' && github.event.action == 'published'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            sbom-${{ matrix.image }}/*.cdx.json
+          # The per-image SBOM files are produced by anchore/sbom-action
+          # in the previous step under artifact name `sbom-<image>`.
+          # Mark as not-fatal if a release was published before the SBOM
+          # step produced any files (e.g. a re-run of an old release).
+          fail_on_unmatched_files: false

@@ -11,9 +11,21 @@
 # ── Core ─────────────────────────────────────────────────────────────────────
 
 variable "region" {
-  description = "AWS region"
+  description = "Primary AWS region where most resources are deployed"
   type        = string
   default     = "us-east-1"
+}
+
+variable "dr_region" {
+  description = "Disaster-recovery AWS region used to mirror backups for cross-region resilience"
+  type        = string
+  default     = "us-west-2"
+}
+
+variable "enable_cross_region_backup" {
+  description = "Whether to replicate AWS Backup recovery points to the DR region. Set false in dev/test to avoid DR-region costs."
+  type        = bool
+  default     = true
 }
 
 variable "environment" {
@@ -89,9 +101,9 @@ variable "db_password" {
 }
 
 variable "backup_retention_days" {
-  description = "Number of days to retain RDS / backup-plan snapshots"
+  description = "Number of days to retain both primary and DR backups"
   type        = number
-  default     = 7
+  default     = 30
 }
 
 # ── ElastiCache / Redis ───────────────────────────────────────────────────────
