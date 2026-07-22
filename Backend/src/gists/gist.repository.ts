@@ -21,6 +21,7 @@ export interface CreateGistData {
   stellar_gist_id?: string;
   tx_hash?: string;
   author?: string;
+  author_verified_at?: Date | null;
 }
 
 export interface UpdateGistData {
@@ -53,26 +54,27 @@ export class GistRepository {
       stellar_gist_id = null,
       tx_hash = null,
       author = null,
+      author_verified_at = null,
     } = data;
 
     const result = await this.dataSource.query<Gist[]>(
       `
       INSERT INTO gists (
         content, location, location_cell,
-        content_hash, stellar_gist_id, tx_hash, author
+        content_hash, stellar_gist_id, tx_hash, author, author_verified_at
       )
       VALUES (
         $1,
         ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography,
-        $4, $5, $6, $7, $8
+        $4, $5, $6, $7, $8, $9
       )
       RETURNING
         id, content, location_cell, content_hash,
-        stellar_gist_id, tx_hash, author, previous_cid, edited_at, created_at,
+        stellar_gist_id, tx_hash, author, author_verified_at, previous_cid, edited_at, created_at,
         ST_X(location::geometry) AS lon,
         ST_Y(location::geometry) AS lat
       `,
-      [content, lon, lat, location_cell, content_hash, stellar_gist_id, tx_hash, author],
+      [content, lon, lat, location_cell, content_hash, stellar_gist_id, tx_hash, author, author_verified_at],
     );
 
     return result[0];
@@ -100,6 +102,8 @@ export class GistRepository {
         g.content_hash,
         g.stellar_gist_id,
         g.tx_hash,
+        g.author,
+        g.author_verified_at,
         g.created_at,
         ST_X(g.location::geometry)                              AS lon,
         ST_Y(g.location::geometry)                              AS lat,
@@ -128,7 +132,7 @@ export class GistRepository {
       `
       SELECT
         id, content, location_cell, content_hash,
-        stellar_gist_id, tx_hash, author, previous_cid, edited_at, created_at,
+        stellar_gist_id, tx_hash, author, author_verified_at, previous_cid, edited_at, created_at,
         ST_X(location::geometry) AS lon,
         ST_Y(location::geometry) AS lat
       FROM gists
@@ -153,7 +157,7 @@ export class GistRepository {
       WHERE id = $1
       RETURNING
         id, content, location_cell, content_hash,
-        stellar_gist_id, tx_hash, author, previous_cid, edited_at, created_at,
+        stellar_gist_id, tx_hash, author, author_verified_at, previous_cid, edited_at, created_at,
         ST_X(location::geometry) AS lon,
         ST_Y(location::geometry) AS lat
       `,
@@ -167,7 +171,7 @@ export class GistRepository {
       `
       SELECT
         id, content, location_cell, content_hash,
-        stellar_gist_id, tx_hash, created_at,
+        stellar_gist_id, tx_hash, author, author_verified_at, created_at,
         ST_X(location::geometry) AS lon,
         ST_Y(location::geometry) AS lat
       FROM gists

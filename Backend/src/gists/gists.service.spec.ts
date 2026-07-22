@@ -23,6 +23,7 @@ const mockGist = (overrides?: Partial<Gist>): Gist => ({
   stellar_gist_id: '1000',
   tx_hash: 'mock_tx_abc',
   author: 'GABC',
+  author_verified_at: null,
   previous_cid: null,
   edited_at: null,
   location: null,
@@ -91,6 +92,7 @@ describe('GistsService', () => {
         { content: 'First', lat: 9.0579, lon: 7.4951 },
         { content: 'Second', lat: 9.058, lon: 7.4952, author: 'GABC' },
       ];
+      const stellarVerified = null;
       geoService.encode.mockReturnValueOnce('cell-1').mockReturnValueOnce('cell-2');
       ipfsService.pinJsonBatch.mockResolvedValue([
         { cid: 'cid-1', mock: true },
@@ -179,6 +181,8 @@ describe('GistsService', () => {
         content_hash: 'mock_Qmabc',
         stellar_gist_id: '42',
         tx_hash: 'tx42',
+        author: undefined,
+        author_verified_at: null,
       });
     });
 

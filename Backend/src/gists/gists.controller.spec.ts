@@ -2,9 +2,21 @@ jest.mock('../common/utils/sanitize', () => ({
   stripHtml: jest.fn((text: string) => text.replace(/<[^>]*>/g, '')),
 }));
 
+jest.mock('@stellar/stellar-sdk', () => ({
+  StrKey: {
+    decodeEd25519PublicKey: jest.fn(),
+  },
+}));
+
+jest.mock('@noble/ed25519', () => ({
+  verifyAsync: jest.fn(),
+}));
+
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { GistsController } from './gists.controller';
 import { GistsService } from './gists.service';
+import { StellarAuthGuard } from '../auth/guards/stellar-auth.guard';
 import { CreateGistDto } from './dto/create-gist.dto';
 import { QueryGistsDto } from './dto/query-gists.dto';
 import { UpdateGistDto } from './dto/update-gist.dto';
@@ -30,6 +42,14 @@ describe('GistsController', () => {
           provide: GistsService,
           useValue: mockGistsService,
         },
+        {
+          provide: StellarAuthGuard,
+          useValue: { canActivate: jest.fn().mockReturnValue(true) },
+        },
+        {
+          provide: ConfigService,
+          useValue: { get: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -48,8 +68,8 @@ describe('GistsController', () => {
       );
       jest.spyOn(service, 'createBatch').mockResolvedValueOnce(result);
 
-      await expect(controller.createBatch(gists)).resolves.toEqual(result);
-      expect(service.createBatch).toHaveBeenCalledWith(gists);
+      await expect(controller.createBatch(gists, null)).resolves.toEqual(result);
+      expect(service.createBatch).toHaveBeenCalledWith(gists, null);
     });
   });
 
@@ -63,6 +83,7 @@ describe('GistsController', () => {
       stellar_gist_id: null,
       tx_hash: null,
       author: null,
+      author_verified_at: null,
       previous_cid: null,
       edited_at: null,
       location: 'POINT(7.4951 9.0579)',
@@ -83,9 +104,9 @@ describe('GistsController', () => {
 
       jest.spyOn(service, 'create').mockResolvedValueOnce(result);
 
-      const response = await controller.create(dto);
+      const response = await controller.create(dto, null);
 
-      expect(service.create).toHaveBeenCalledWith(dto);
+      expect(service.create).toHaveBeenCalledWith(dto, null);
       expect(response).toEqual(result);
     });
 
@@ -99,9 +120,9 @@ describe('GistsController', () => {
 
       jest.spyOn(service, 'create').mockResolvedValueOnce(result);
 
-      const response = await controller.create(dto);
+      const response = await controller.create(dto, null);
 
-      expect(service.create).toHaveBeenCalledWith(dto);
+      expect(service.create).toHaveBeenCalledWith(dto, null);
       expect(response).toEqual(result);
     });
 
@@ -115,7 +136,7 @@ describe('GistsController', () => {
 
       jest.spyOn(service, 'create').mockRejectedValueOnce(error);
 
-      await expect(controller.create(dto)).rejects.toThrow('Database error');
+      await expect(controller.create(dto, null)).rejects.toThrow('Database error');
     });
   });
 

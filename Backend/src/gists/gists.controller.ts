@@ -9,6 +9,7 @@ import {
   Param,
   Query,
   ParseArrayPipe,
+  UseGuards,
 } from '@nestjs/common';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { ApiBody, ApiOperation, ApiTags, ApiParam, ApiResponse } from '@nestjs/swagger';
@@ -16,6 +17,9 @@ import { GistsService } from './gists.service';
 import { CreateGistDto } from './dto/create-gist.dto';
 import { QueryGistsDto } from './dto/query-gists.dto';
 import { UpdateGistDto } from './dto/update-gist.dto';
+import { StellarAuthGuard } from '../auth/guards/stellar-auth.guard';
+import { StellarVerifiedUser } from '../auth/decorators/stellar-verified.decorator';
+import { StellarVerified } from '../auth/interfaces/stellar-verified.interface';
 
 const MAX_GISTS_PER_BATCH = 10;
 
@@ -41,21 +45,27 @@ export class GistsController {
   constructor(private readonly gistsService: GistsService) {}
 
   @Post()
+  @UseGuards(StellarAuthGuard)
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Post a new anonymous gist at a location' })
-  create(@Body() dto: CreateGistDto) {
-    return this.gistsService.create(dto);
+  create(
+    @Body() dto: CreateGistDto,
+    @StellarVerifiedUser() stellarVerified: StellarVerified | null,
+  ) {
+    return this.gistsService.create(dto, stellarVerified);
   }
 
   @Post('batch')
+  @UseGuards(StellarAuthGuard)
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Post several anonymous gists in one burst' })
   @ApiBody({ type: [CreateGistDto] })
   createBatch(
     @Body(new ParseGistsBatchPipe())
     dtos: CreateGistDto[],
+    @StellarVerifiedUser() stellarVerified: StellarVerified | null,
   ) {
-    return this.gistsService.createBatch(dtos);
+    return this.gistsService.createBatch(dtos, stellarVerified);
   }
 
   @Get()
