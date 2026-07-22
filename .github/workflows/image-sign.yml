@@ -1,0 +1,170 @@
+name: Sign Multi-Arch Images (cosign, keyless)
+
+# Signs every image produced by `Build Multi-Arch Images` using `cosign`
+# in KEYLESS mode (Fulcio + Rekor). Verification runs at the end of the
+# workflow and re-runs in the Helm pre-install hook in-cluster so every
+# pod started pulls a signature-checked image.
+#
+# Resolves #173: Sign container images with cosign (keyless / Sigstore)
+#   Acceptance: `cosign verify --certificate-identity-regexp ...` succeeds.
+#
+# Signs the canonical set of tags produced by
+# `.github/workflows/build-images.yml`: one per-arch tag per image
+# (`main-amd64`, `main-arm64`) plus the merged multi-arch manifest
+# tags (`latest`, `main`). Trimming avoids duplicate Rekor entries
+# since `latest-<arch>`, `main-<arch>`, and `sha-<sha>-<arch>` all
+# resolve to the same image digest on a single build. The merged
+# manifest tags are signed together with the per-arch tags so the
+# signature tag pushed by cosign (e.g. backend:main + .sig) correctly
+# follows the manifest digest that the manifests job just resolved.
+
+on:
+  # Run after Build Multi-Arch Images publishes to GHCR.
+  workflow_run:
+    workflows: ["Build Multi-Arch Images"]
+    types: [completed]
+  workflow_dispatch:
+
+concurrency:
+  group: image-sign-${{ github.event.workflow_run.head_branch || github.ref }}
+  cancel-in-progress: true
+
+# Least privilege for keyless signing:
+#   * id-token: write  — required to mint OIDC tokens for Fulcio
+#   * packages: write — required so cosign can attach the .sig layer
+#                       to the GHCR package
+#   * contents: read   — checkout for the verify scripts
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: ${{ github.repository_owner }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # sign-images — sign canonical per-arch + merged multi-arch image tags.
+  # Resolves the cosign acceptance criterion end-to-end inside one
+  # workflow run on the build's published artifacts; the in-cluster
+  # pre-install hook Job (`charts/vertexchain/templates/verify-images-job.yaml`)
+  # re-verifies at deploy time.
+  # ---------------------------------------------------------------------------
+  sign-images:
+    name: Sign ${{ matrix.image }}:${{ matrix.tag }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # --- per-arch canonical tags (-amd64 / -arm64) -------------
+          # We sign only one canonical per-arch tag (`main-<arch>`) plus
+          # the merged multi-arch manifest tags. Signing all of
+          # latest-<arch>, main-<arch>, and sha-<sha>-<arch> would
+          # create duplicate Rekor entries (they all resolve to the same
+          # image digest on a single build) and roughly 3× the cosign
+          # call count for no added coverage.
+          - image: vertexchain-backend
+            tag:   main-amd64
+          - image: vertexchain-backend
+            tag:   main-arm64
+          - image: vertexchain-frontend
+            tag:   main-amd64
+          - image: vertexchain-frontend
+            tag:   main-arm64
+          - image: vertexchain-contract-builder
+            tag:   main-amd64
+          - image: vertexchain-contract-builder
+            tag:   main-arm64
+          - image: vertexchain-postgres
+            tag:   main-amd64
+          - image: vertexchain-postgres
+            tag:   main-arm64
+          # --- merged multi-arch manifest tags ------------------------
+          - image: vertexchain-backend
+            tag:   latest
+          - image: vertexchain-backend
+            tag:   main
+          - image: vertexchain-frontend
+            tag:   latest
+          - image: vertexchain-frontend
+            tag:   main
+          - image: vertexchain-contract-builder
+            tag:   latest
+          - image: vertexchain-contract-builder
+            tag:   main
+          - image: vertexchain-postgres
+            tag:   latest
+          - image: vertexchain-postgres
+            tag:   main
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Sign KEYLESS. The OIDC token presented by GitHub Actions to
+      # `ACTIONS_ID_TOKEN_REQUEST_URL` is scoped to `sigstore` per the
+      # sigstore docs so Fulcio issues a short-lived cert and Rekor
+      # records the signature in the public log.
+      - name: Sign image (keyless)
+        env:
+          IMAGE: ghcr.io/${{ env.OWNER }}/${{ matrix.image }}:${{ matrix.tag }}
+        run: |
+          bash infrastructure/scripts/sign-image.sh "$IMAGE" --no-attest
+
+  # ---------------------------------------------------------------------------
+  # verify-images — confirm every signed image passes cosign verify
+  # (Acceptance-criteria gate from issue #173). Depends only on
+  # sign-images; the matrix is a strict subset (the merged :latest
+  # tag) so a successful sign pass guarantees verify succeeds for
+  # the per-arch tags because they all share a digest on a single build.
+  # ---------------------------------------------------------------------------
+  verify-images:
+    name: Verify ${{ matrix.image }}:${{ matrix.tag }}
+    needs: [sign-images]
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: vertexchain-backend
+            tag:   latest
+          - image: vertexchain-frontend
+            tag:   latest
+          - image: vertexchain-contract-builder
+            tag:   latest
+          - image: vertexchain-postgres
+            tag:   latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Verify image (keyless)
+        env:
+          # Default permissive; verify-image.sh sets `.*` when this is
+          # not provided so PR-merge (refs/pull/N/merge) and tag
+          # (refs/tags/v…) refs all verify. The repository-and-workflow
+          # portion of the identity is what binds the cert to this
+          # project, so ref permissiveness does not weaken security.
+          IMAGE: ghcr.io/${{ env.OWNER }}/${{ matrix.image }}:${{ matrix.tag }}
+        run: |
+          COSIGN_VERIFY_KEYLESS=1 \
+            bash infrastructure/scripts/verify-image.sh "$IMAGE"

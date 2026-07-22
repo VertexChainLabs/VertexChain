@@ -1,0 +1,326 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# VertexChain Helm values
+# Override any key with --set or a custom values file:
+#   helm upgrade --install vertexchain ./vertexchain -f values.prod.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ---------------------------------------------------------------------------
+# Global
+# ---------------------------------------------------------------------------
+global:
+  # Image pull secrets applied to all Deployments
+  imagePullSecrets: []
+  # Override the chart name used in labels
+  nameOverride: ""
+  fullnameOverride: ""
+
+# ---------------------------------------------------------------------------
+# Backend (NestJS API)
+# ---------------------------------------------------------------------------
+backend:
+  enabled: true
+
+  image:
+    repository: ghcr.io/vertexchainlabs/vertexchain-backend
+    tag: ""          # defaults to .Chart.AppVersion when empty
+    pullPolicy: IfNotPresent
+
+  replicaCount: 2
+
+  # Service
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 3000
+
+  # Resource requests and limits
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Horizontal Pod Autoscaler
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+  # Liveness / readiness probes (NestJS health endpoint from HealthModule)
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 3000
+    initialDelaySeconds: 15
+    periodSeconds: 20
+    failureThreshold: 3
+
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: 3000
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    failureThreshold: 3
+
+  # Non-sensitive environment variables; sensitive values go in `secrets`
+  env:
+    NODE_ENV: production
+    PORT: "3000"
+    SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org"
+    STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+    CONTRACT_ID_GIST_REGISTRY: ""
+    CORS_ORIGINS: ""
+
+  # Reference to an existing Secret for sensitive values.
+  # Keys expected: DATABASE_PASSWORD, PINATA_API_KEY, PINATA_SECRET_KEY,
+  #                STELLAR_SECRET_KEY
+  # Leave empty to have the chart create a Secret from the `secrets` block.
+  existingSecret: ""
+
+  # Sensitive values — only used when existingSecret is empty.
+  # Store real values in a Helm secrets plugin or external-secrets operator.
+  secrets:
+    DATABASE_PASSWORD: "changeme"
+    PINATA_API_KEY: ""
+    PINATA_SECRET_KEY: ""
+    STELLAR_SECRET_KEY: ""
+
+  # Pod scheduling
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  podAnnotations: {}
+  podSecurityContext: {}
+  securityContext: {}
+
+  # Extra environment variables injected verbatim
+  extraEnv: []
+  # - name: MY_EXTRA_VAR
+  #   value: "foo"
+
+# ---------------------------------------------------------------------------
+# Frontend (Next.js client)
+# ---------------------------------------------------------------------------
+frontend:
+  enabled: true
+
+  image:
+    repository: ghcr.io/vertexchainlabs/vertexchain-frontend
+    tag: ""          # defaults to .Chart.AppVersion when empty
+    pullPolicy: IfNotPresent
+
+  replicaCount: 2
+
+  # Service
+  service:
+    type: LoadBalancer
+    port: 80
+    targetPort: 3000
+
+  # Resource requests and limits
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Horizontal Pod Autoscaler
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 75
+
+  # Liveness / readiness probes
+  livenessProbe:
+    httpGet:
+      path: /
+      port: 3000
+    initialDelaySeconds: 30
+    periodSeconds: 10
+
+  readinessProbe:
+    httpGet:
+      path: /
+      port: 3000
+    initialDelaySeconds: 10
+    periodSeconds: 5
+
+  # Non-sensitive environment variables
+  env:
+    NODE_ENV: production
+    NEXT_TELEMETRY_DISABLED: "1"
+    PORT: "3000"
+    CDN_BASE_URL: https://cdn.vertexchain.app
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+  podSecurityContext: {}
+  securityContext: {}
+
+# ---------------------------------------------------------------------------
+# Analytics (Next.js dashboard)
+# ---------------------------------------------------------------------------
+analytics:
+  enabled: true
+
+  image:
+    repository: ghcr.io/vertexchainlabs/vertexchain-analytics
+    tag: ""
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 3001
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+
+  livenessProbe:
+    httpGet:
+      path: /
+      port: 3001
+    initialDelaySeconds: 10
+    periodSeconds: 20
+
+  readinessProbe:
+    httpGet:
+      path: /
+      port: 3001
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+  env:
+    NEXT_PUBLIC_API_URL: ""  # e.g. https://api.vertexchain.io
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+  podSecurityContext: {}
+  securityContext: {}
+
+# ---------------------------------------------------------------------------
+# Ingress
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: false
+  className: "nginx"
+  annotations: {}
+  # kubernetes.io/tls-acme: "true"
+  # cert-manager.io/cluster-issuer: letsencrypt-prod
+
+  hosts:
+    - host: api.vertexchain.io
+      serviceName: backend
+      paths:
+        - path: /
+          pathType: Prefix
+    - host: vertexchain.io
+      serviceName: frontend
+      paths:
+        - path: /
+          pathType: Prefix
+    - host: analytics.vertexchain.io
+      serviceName: analytics
+      paths:
+        - path: /
+          pathType: Prefix
+
+  tls: []
+  # - secretName: vertexchain-tls
+  #   hosts:
+  #     - api.vertexchain.io
+  #     - vertexchain.io
+  #     - analytics.vertexchain.io
+
+# ---------------------------------------------------------------------------
+# PostgreSQL (Bitnami sub-chart)
+# ---------------------------------------------------------------------------
+postgresql:
+  # Set to false to use an external database; provide host/port/name via
+  # backend.env.DATABASE_HOST etc.
+  enabled: true
+
+  auth:
+    database: gist
+    username: gist
+    # existingSecret: vertexchain-postgresql  # override with an existing secret
+    password: "changeme"     # only used when existingSecret is unset
+    postgresPassword: "changeme"
+
+  primary:
+    initdb:
+      # Enable PostGIS extension on first boot
+      scripts:
+        enable_postgis.sql: |
+          CREATE EXTENSION IF NOT EXISTS postgis;
+          CREATE EXTENSION IF NOT EXISTS postgis_topology;
+
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClass: ""   # leave empty to use the cluster default
+
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+
+# ---------------------------------------------------------------------------
+# ServiceAccount
+# ---------------------------------------------------------------------------
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# ---------------------------------------------------------------------------
+# Network policy (opt-in)
+# ---------------------------------------------------------------------------
+networkPolicy:
+  enabled: false
+
+# ---------------------------------------------------------------------------
+# Image signature verification (issue #173)
+#
+# When `enabled: true`, a pre-install/pre-upgrade Hook Job runs
+# `cosign verify --certificate-identity-regexp ...` against every image
+# referenced by .Values.<component>.image before the chart's Deployments
+# are admitted. Enable per-release (e.g. in values.prod.yaml) once every
+# shipped image carries a cosign signature — opt-in so existing releases
+# are not broken.
+# ---------------------------------------------------------------------------
+verifyImages:
+  enabled: false
+  # Pin the cosign binary image used by the verification Job. Update on
+  # upstream minor upgrades; track sigstore/cosign.
+  image: ghcr.io/sigstore/cosign:v2.4.1

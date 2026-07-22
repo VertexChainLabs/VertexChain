@@ -21,10 +21,7 @@ const docsDir = join(__dirname, '..', '..', 'infrastructure', 'docs');
     const document = SwaggerModule.createDocument(app, swaggerConfig);
 
     mkdirSync(docsDir, { recursive: true });
-    writeFileSync(
-      join(docsDir, 'openapi.json'),
-      JSON.stringify(document, null, 2),
-    );
+    writeFileSync(join(docsDir, 'openapi.json'), JSON.stringify(document, null, 2));
     writeFileSync(join(docsDir, 'openapi.yaml'), dump(document));
 
     await app.close();

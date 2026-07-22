@@ -1,7 +1,6 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
-    Env, String,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, Address, Env, String,
 };
 
 #[derive(Clone)]
@@ -43,60 +42,8 @@ pub enum GovernanceError {
     InvalidInput = 10,
 }
 
-pub struct GovernanceEvents;
-
-impl GovernanceEvents {
-    pub fn admin_updated(env: &Env, previous_admin: &Address, new_admin: &Address) {
-        let topics = (symbol_short!("gov"), symbol_short!("admin"));
-        env.events().publish(
-            topics,
-            (
-                previous_admin.clone(),
-                new_admin.clone(),
-                env.ledger().timestamp(),
-            ),
-        );
-    }
-
-    pub fn proposal_created(
-        env: &Env,
-        id: u32,
-        proposer: &Address,
-        config_key: &String,
-        config_value: &String,
-    ) {
-        let topics = (symbol_short!("gov"), symbol_short!("created"));
-        env.events().publish(
-            topics,
-            (
-                id,
-                proposer.clone(),
-                config_key.clone(),
-                config_value.clone(),
-                env.ledger().timestamp(),
-            ),
-        );
-    }
-
-    pub fn voted(env: &Env, id: u32, voter: &Address) {
-        let topics = (symbol_short!("gov"), symbol_short!("voted"));
-        env.events()
-            .publish(topics, (id, voter.clone(), env.ledger().timestamp()));
-    }
-
-    pub fn proposal_executed(env: &Env, id: u32, config_key: &String, config_value: &String) {
-        let topics = (symbol_short!("gov"), symbol_short!("executed"));
-        env.events().publish(
-            topics,
-            (
-                id,
-                config_key.clone(),
-                config_value.clone(),
-                env.ledger().timestamp(),
-            ),
-        );
-    }
-}
+mod events;
+pub use events::GovernanceEvents;
 
 pub fn initialize_governance(env: &Env, admin: Address, required_approvals: u32) {
     if env.storage().instance().has(&GovernanceDataKey::Admin) {
@@ -329,7 +276,6 @@ impl GovernanceContract {
 mod tests {
     use super::*;
     use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::{Address, Env, String};
 
     #[test]
     fn test_initialize() {

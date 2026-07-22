@@ -1,7 +1,7 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
-    Env, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, Address, Env, Symbol,
+    Vec,
 };
 
 #[derive(Clone)]
@@ -50,43 +50,8 @@ pub enum MultiSigError {
     Overflow = 13,
 }
 
-pub struct MultisigEvents;
-
-impl MultisigEvents {
-    pub fn pending_created(env: &Env, tx: &PendingTx) {
-        let topics = (symbol_short!("tx"), symbol_short!("pending"), tx.id);
-        env.events().publish(
-            topics,
-            (tx.from.clone(), tx.to.clone(), tx.amount, tx.asset.clone()),
-        );
-    }
-
-    pub fn approval_recorded(
-        env: &Env,
-        tx_id: u64,
-        signer: &Address,
-        approvals_count: u32,
-        threshold: u32,
-    ) {
-        let topics = (symbol_short!("approve"), symbol_short!("record"), tx_id);
-        env.events()
-            .publish(topics, (signer.clone(), approvals_count, threshold));
-    }
-
-    pub fn transaction_executed(env: &Env, tx: &PendingTx, executor: &Address) {
-        let topics = (symbol_short!("tx"), symbol_short!("executed"), tx.id);
-        env.events().publish(
-            topics,
-            (
-                executor.clone(),
-                tx.from.clone(),
-                tx.to.clone(),
-                tx.amount,
-                tx.asset.clone(),
-            ),
-        );
-    }
-}
+mod events;
+pub use events::MultisigEvents;
 
 pub fn initialize_state(env: &Env, admin: Address) {
     if env.storage().instance().has(&DataKey::Admin) {
@@ -389,7 +354,6 @@ impl MultisigContract {
 mod tests {
     use super::*;
     use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::{Address, Env};
 
     #[test]
     fn test_initialize() {
