@@ -17,6 +17,7 @@ import { CacheService } from '../cache/cache.service';
 import { Gist } from './entities/gist.entity';
 import { PaginatedResponse } from '../common/utils/pagination.helper';
 import { stripHtml } from '../common/utils/sanitize';
+import { StellarVerified } from '../auth/interfaces/stellar-verified.interface';
 
 const EDIT_WINDOW_MS = 60_000;
 
@@ -32,7 +33,7 @@ export class GistsService {
     private readonly cacheService: CacheService,
   ) {}
 
-  async create(dto: CreateGistDto): Promise<Gist> {
+  async create(dto: CreateGistDto, stellarVerified?: StellarVerified | null): Promise<Gist> {
     // Issue 87 — sanitize content before storing
     const content = stripHtml(dto.content);
 
@@ -46,7 +47,8 @@ export class GistsService {
       created_at: new Date().toISOString(),
     });
 
-    const { gistId, txHash } = await this.sorobanService.postGist(locationCell, cid, dto.author);
+    const author = stellarVerified ? stellarVerified.address : dto.author;
+    const { gistId, txHash } = await this.sorobanService.postGist(locationCell, cid, author);
 
     this.logger.log(`Gist posted → cell=${locationCell} cid=${cid} gistId=${gistId}`);
 
@@ -58,7 +60,8 @@ export class GistsService {
       content_hash: cid,
       stellar_gist_id: gistId,
       tx_hash: txHash,
-      author: dto.author,
+      author,
+      author_verified_at: stellarVerified ? stellarVerified.verifiedAt : null,
     });
 
     // Invalidate nearby cache for the affected area
@@ -67,8 +70,11 @@ export class GistsService {
     return gist;
   }
 
-  async createBatch(dtos: CreateGistDto[]): Promise<Gist[]> {
+  async createBatch(dtos: CreateGistDto[], stellarVerified?: StellarVerified | null): Promise<Gist[]> {
     const createdAt = new Date().toISOString();
+    const author = stellarVerified ? stellarVerified.address : undefined;
+    const authorVerifiedAt = stellarVerified ? stellarVerified.verifiedAt : null;
+
     const prepared = dtos.map((dto) => {
       const content = stripHtml(dto.content);
       const locationCell = this.geoService.encode(dto.lat, dto.lon);
@@ -77,6 +83,7 @@ export class GistsService {
         dto,
         content,
         locationCell,
+        effectiveAuthor: author ?? dto.author,
         payload: {
           content,
           lat: dto.lat,
@@ -90,12 +97,12 @@ export class GistsService {
     const pins = await this.ipfsService.pinJsonBatch(prepared.map(({ payload }) => payload));
 
     const gists = await Promise.all(
-      prepared.map(async ({ dto, content, locationCell }, index) => {
+      prepared.map(async ({ dto, content, locationCell, effectiveAuthor }, index) => {
         const { cid } = pins[index];
         const { gistId, txHash } = await this.sorobanService.postGist(
           locationCell,
           cid,
-          dto.author,
+          effectiveAuthor,
         );
 
         this.logger.log(`Batch gist posted → cell=${locationCell} cid=${cid} gistId=${gistId}`);
@@ -108,6 +115,8 @@ export class GistsService {
           content_hash: cid,
           stellar_gist_id: gistId,
           tx_hash: txHash,
+          author: effectiveAuthor,
+          author_verified_at: authorVerifiedAt,
         });
       }),
     );

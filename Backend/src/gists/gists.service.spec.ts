@@ -23,6 +23,7 @@ const mockGist = (overrides?: Partial<Gist>): Gist => ({
   stellar_gist_id: '1000',
   tx_hash: 'mock_tx_abc',
   author: 'GABC',
+  author_verified_at: null,
   previous_cid: null,
   edited_at: null,
   location: null,
@@ -179,6 +180,8 @@ describe('GistsService', () => {
         content_hash: 'mock_Qmabc',
         stellar_gist_id: '42',
         tx_hash: 'tx42',
+        author: undefined,
+        author_verified_at: null,
       });
     });
 

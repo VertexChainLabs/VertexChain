@@ -1,0 +1,142 @@
+# Dependabot configuration for VertexChain
+# Docs: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+
+updates:
+  # ── Root npm dependencies ──────────────────────────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "root"
+    open-pull-requests-limit: 5
+    groups:
+      root-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ── Frontend (Next.js / React) ─────────────────────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/Frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "frontend"
+    open-pull-requests-limit: 5
+    groups:
+      frontend-dependencies:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "next"
+        update-types:
+          - "minor"
+          - "patch"
+      nextjs-frontend:
+        patterns:
+          - "next"
+
+  # ── Backend (NestJS) ───────────────────────────────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/Backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "backend"
+    open-pull-requests-limit: 5
+    groups:
+      backend-dependencies:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "@nestjs/*"
+        update-types:
+          - "minor"
+          - "patch"
+      nestjs-framework:
+        patterns:
+          - "@nestjs/*"
+
+  # ── Analytics (Next.js dashboard) ──────────────────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/analytics"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "analytics"
+    open-pull-requests-limit: 5
+    groups:
+      analytics-dependencies:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "next"
+        update-types:
+          - "minor"
+          - "patch"
+      nextjs-analytics:
+        patterns:
+          - "next"
+
+  # ── Contracts (Rust / Soroban – Cargo) ─────────────────────────────────
+  - package-ecosystem: "cargo"
+    directory: "/contracts"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "contracts"
+    open-pull-requests-limit: 5
+    groups:
+      cargo-dependencies:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "soroban-sdk"
+        update-types:
+          - "minor"
+          - "patch"
+      soroban-sdk:
+        patterns:
+          - "soroban-sdk"
+
+  # ── GitHub Actions ─────────────────────────────────────────────────────
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "ci"
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"

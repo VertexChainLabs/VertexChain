@@ -27,14 +27,14 @@ export function useDateRange() {
   const params = useSearchParams();
 
   const [range, setRangeState] = useState<DateRange>(() => {
-    const from = params.get('from');
-    const to = params.get('to');
+    const from = params?.get('from');
+    const to = params?.get('to');
     if (from && to) return { from, to };
     return presetRange('7d');
   });
 
   const [preset, setPresetState] = useState<Preset>(() => {
-    return (params.get('preset') as Preset) ?? '7d';
+    return (params?.get('preset') as Preset) ?? '7d';
   });
 
   const applyPreset = useCallback((p: Preset, custom?: DateRange) => {
@@ -50,6 +50,7 @@ export function useDateRange() {
 
   // Sync on mount if params already present
   useEffect(() => {
+    if (!params) return;
     const from = params.get('from');
     const to = params.get('to');
     const p = params.get('preset') as Preset | null;

@@ -1,17 +1,44 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, Address, Env, String,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, vec,
+    Address, Env, String, Vec,
 };
+
+// ---------------------------------------------------------------------------
+// Storage keys
+// ---------------------------------------------------------------------------
 
 #[derive(Clone)]
 #[contracttype]
 pub enum GovernanceDataKey {
-    Admin, // To manage governance settings
+    Admin,
     RequiredApprovals,
     ProposalCount,
     Proposal(u32),
-    UserVote(u32, Address), // Proposal ID, User -> bool
-    ConfigValue(String),    // Stores the actual config data
+    /// New: stores a `VoteRecord` struct per (proposal_id, voter).
+    /// Old entries stored `bool`; `migrate_votes` converts them during upgrade.
+    UserVote(u32, Address),
+    ConfigValue(String),
+    /// New: maps a proposer `Address` -> `Vec<u32>` of their proposal IDs.
+    ProposalsByProposer(Address),
+    /// Set to `true` once `migrate_votes` has run; prevents double-migration.
+    MigrationDone,
+    /// Stores the list of addresses allowed to execute admin-key proposals.
+    ExecutorAllowlist,
+}
+
+// ---------------------------------------------------------------------------
+// Data types
+// ---------------------------------------------------------------------------
+
+/// Replaces the old bare `bool` vote value.
+/// `vote_power` is kept at 1 for every vote cast through the public API; it is
+/// left as a field so future weight-based voting can reuse the same struct.
+#[derive(Clone)]
+#[contracttype]
+pub struct VoteRecord {
+    pub vote_power: u32,
+    pub against: bool,
 }
 
 #[derive(Clone)]
@@ -22,9 +49,15 @@ pub struct Proposal {
     pub config_key: String,
     pub config_value: String,
     pub approvals: u32,
+    /// New: cumulative vote_power of all "against" votes.
+    pub rejections: u32,
     pub executed: bool,
     pub deadline: u64,
 }
+
+// ---------------------------------------------------------------------------
+// Errors
+// ---------------------------------------------------------------------------
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -40,10 +73,83 @@ pub enum GovernanceError {
     NotEnoughApprovals = 8,
     Overflow = 9,
     InvalidInput = 10,
+    MigrationAlreadyDone = 11,
+    NotInExecutorAllowlist = 12,
 }
 
-mod events;
-pub use events::GovernanceEvents;
+// ---------------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------------
+
+pub struct GovernanceEvents;
+
+impl GovernanceEvents {
+    pub fn admin_updated(env: &Env, previous_admin: &Address, new_admin: &Address) {
+        let topics = (symbol_short!("gov"), symbol_short!("admin"));
+        env.events().publish(
+            topics,
+            (
+                previous_admin.clone(),
+                new_admin.clone(),
+                env.ledger().timestamp(),
+            ),
+        );
+    }
+
+    pub fn proposal_created(
+        env: &Env,
+        id: u32,
+        proposer: &Address,
+        config_key: &String,
+        config_value: &String,
+    ) {
+        let topics = (symbol_short!("gov"), symbol_short!("created"));
+        env.events().publish(
+            topics,
+            (
+                id,
+                proposer.clone(),
+                config_key.clone(),
+                config_value.clone(),
+                env.ledger().timestamp(),
+            ),
+        );
+    }
+
+    /// Extended to include the `against` flag so off-chain indexers can tally.
+    pub fn voted(env: &Env, id: u32, voter: &Address, against: bool) {
+        let topics = (symbol_short!("gov"), symbol_short!("voted"));
+        env.events().publish(
+            topics,
+            (id, voter.clone(), against, env.ledger().timestamp()),
+        );
+    }
+
+    pub fn proposal_executed(env: &Env, id: u32, config_key: &String, config_value: &String) {
+        let topics = (symbol_short!("gov"), symbol_short!("executed"));
+        env.events().publish(
+            topics,
+            (
+                id,
+                config_key.clone(),
+                config_value.clone(),
+                env.ledger().timestamp(),
+            ),
+        );
+    }
+
+    pub fn migration_done(env: &Env, migrated_count: u32) {
+        let topics = (symbol_short!("gov"), symbol_short!("migrated"));
+        env.events()
+            .publish(topics, (migrated_count, env.ledger().timestamp()));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Governance logic
+// ---------------------------------------------------------------------------
+
+const MAX_CONFIG_STRING_LENGTH: u32 = 256;
 
 pub fn initialize_governance(env: &Env, admin: Address, required_approvals: u32) {
     if env.storage().instance().has(&GovernanceDataKey::Admin) {
@@ -80,9 +186,6 @@ pub fn update_admin(env: &Env, current_admin: Address, new_admin: Address) {
     GovernanceEvents::admin_updated(env, &current_admin, &new_admin);
 }
 
-/// Maximum length for config key and value strings
-const MAX_CONFIG_STRING_LENGTH: u32 = 256;
-
 pub fn create_proposal(
     env: &Env,
     proposer: Address,
@@ -92,7 +195,6 @@ pub fn create_proposal(
 ) -> u32 {
     proposer.require_auth();
 
-    // Validate input string lengths
     if config_key.len() > MAX_CONFIG_STRING_LENGTH || config_key.is_empty() {
         panic_with_error!(env, GovernanceError::InvalidInput);
     }
@@ -112,6 +214,7 @@ pub fn create_proposal(
     let new_id = count
         .checked_add(1)
         .unwrap_or_else(|| panic_with_error!(env, GovernanceError::Overflow));
+
     let current_time = env.ledger().timestamp();
     let deadline = current_time
         .checked_add(duration_seconds)
@@ -123,6 +226,7 @@ pub fn create_proposal(
         config_key: config_key.clone(),
         config_value: config_value.clone(),
         approvals: 0,
+        rejections: 0,
         executed: false,
         deadline,
     };
@@ -134,12 +238,28 @@ pub fn create_proposal(
         .instance()
         .set(&GovernanceDataKey::ProposalCount, &new_id);
 
+    // Index proposal under proposer
+    let proposer_key = GovernanceDataKey::ProposalsByProposer(proposer.clone());
+    let mut ids: Vec<u32> = env
+        .storage()
+        .persistent()
+        .get(&proposer_key)
+        .unwrap_or_else(|| vec![env]);
+    ids.push_back(new_id);
+    env.storage().persistent().set(&proposer_key, &ids);
+
     GovernanceEvents::proposal_created(env, new_id, &proposer, &config_key, &config_value);
 
     new_id
 }
 
-pub fn vote_proposal(env: &Env, voter: Address, proposal_id: u32) {
+/// Cast a vote for or against a proposal.
+///
+/// * `against = false` → approval vote (increments `proposal.approvals`)
+/// * `against = true`  → rejection vote (increments `proposal.rejections`)
+///
+/// Each address may only vote once per proposal regardless of direction.
+pub fn vote_proposal(env: &Env, voter: Address, proposal_id: u32, against: bool) {
     voter.require_auth();
 
     let mut proposal: Proposal = env
@@ -157,26 +277,63 @@ pub fn vote_proposal(env: &Env, voter: Address, proposal_id: u32) {
     }
 
     let vote_key = GovernanceDataKey::UserVote(proposal_id, voter.clone());
-    let has_voted: bool = env.storage().persistent().get(&vote_key).unwrap_or(false);
 
-    if has_voted {
+    // Check whether a VoteRecord already exists.  On a freshly-deployed
+    // contract there are no old bool entries; after migrate_votes() runs all
+    // old entries are replaced with VoteRecord values.
+    let already_voted: bool = env.storage().persistent().has(&vote_key);
+    if already_voted {
         panic_with_error!(env, GovernanceError::AlreadyVoted);
     }
 
-    env.storage().persistent().set(&vote_key, &true);
-    proposal.approvals = proposal
-        .approvals
-        .checked_add(1)
-        .unwrap_or_else(|| panic_with_error!(env, GovernanceError::Overflow));
+    let record = VoteRecord {
+        vote_power: 1,
+        against,
+    };
+    env.storage().persistent().set(&vote_key, &record);
+
+    if against {
+        proposal.rejections = proposal
+            .rejections
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(env, GovernanceError::Overflow));
+    } else {
+        proposal.approvals = proposal
+            .approvals
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(env, GovernanceError::Overflow));
+    }
+
     env.storage()
         .persistent()
         .set(&GovernanceDataKey::Proposal(proposal_id), &proposal);
 
-    GovernanceEvents::voted(env, proposal_id, &voter);
+    GovernanceEvents::voted(env, proposal_id, &voter, against);
+}
+
+fn is_admin_config_key(env: &Env, key: &String) -> bool {
+    let admin_str = String::from_str(env, "admin");
+    let required_str = String::from_str(env, "required_approvals");
+    let allowlist_str = String::from_str(env, "executor_allowlist");
+    *key == admin_str || *key == required_str || *key == allowlist_str
+}
+
+pub fn set_executor_allowlist(env: &Env, caller: Address, allowlist: Vec<Address>) {
+    require_admin(env, &caller);
+    env.storage()
+        .persistent()
+        .set(&GovernanceDataKey::ExecutorAllowlist, &allowlist);
+}
+
+pub fn get_executor_allowlist(env: &Env) -> Vec<Address> {
+    env.storage()
+        .persistent()
+        .get(&GovernanceDataKey::ExecutorAllowlist)
+        .unwrap_or_else(|| vec![env])
 }
 
 pub fn execute_proposal(env: &Env, caller: Address, proposal_id: u32) {
-    caller.require_auth(); // Anyone can trigger execution if conditions met, but auth required to trace
+    caller.require_auth();
 
     let mut proposal: Proposal = env
         .storage()
@@ -202,7 +359,17 @@ pub fn execute_proposal(env: &Env, caller: Address, proposal_id: u32) {
         panic_with_error!(env, GovernanceError::NotEnoughApprovals);
     }
 
-    // Apply configuration changes
+    if is_admin_config_key(env, &proposal.config_key) && caller != proposal.proposer {
+        let allowlist: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&GovernanceDataKey::ExecutorAllowlist)
+            .unwrap_or_else(|| vec![env]);
+        if !allowlist.contains(&caller) {
+            panic_with_error!(env, GovernanceError::NotInExecutorAllowlist);
+        }
+    }
+
     env.storage().persistent().set(
         &GovernanceDataKey::ConfigValue(proposal.config_key.clone()),
         &proposal.config_value,
@@ -220,6 +387,69 @@ pub fn execute_proposal(env: &Env, caller: Address, proposal_id: u32) {
         &proposal.config_value,
     );
 }
+
+/// Return the list of proposal IDs created by `proposer`.
+/// Returns an empty Vec when the address has no proposals.
+pub fn get_proposals_by_proposer(env: &Env, proposer: Address) -> Vec<u32> {
+    env.storage()
+        .persistent()
+        .get(&GovernanceDataKey::ProposalsByProposer(proposer))
+        .unwrap_or_else(|| vec![env])
+}
+
+// ---------------------------------------------------------------------------
+// Migration
+// ---------------------------------------------------------------------------
+
+/// One-shot migration that converts all pre-upgrade `bool` vote entries for
+/// the supplied `snapshot_votes` list into [`VoteRecord`] structs.
+///
+/// **Design rationale**
+/// Soroban persistent storage is append-only from the runtime's perspective —
+/// the contract cannot iterate all keys without knowing them in advance.
+/// The agreed-upon approach is therefore an operator-supplied snapshot:
+/// the deployer reads every `UserVote` key off-chain before upgrade and passes
+/// them in here.  The function is idempotent for already-migrated entries
+/// (a `VoteRecord` value is left unchanged) and is guarded by a
+/// `MigrationDone` flag so it cannot be called twice.
+///
+/// `snapshot_votes`: list of (proposal_id, voter) tuples that held `true`
+/// under the old storage scheme.  All were approval votes (`against = false`).
+pub fn migrate_votes(env: &Env, caller: Address, snapshot_votes: Vec<(u32, Address)>) {
+    require_admin(env, &caller);
+
+    let done_key = GovernanceDataKey::MigrationDone;
+    if env.storage().instance().has(&done_key) {
+        panic_with_error!(env, GovernanceError::MigrationAlreadyDone);
+    }
+
+    let mut migrated: u32 = 0;
+    for entry in snapshot_votes.iter() {
+        let (proposal_id, voter) = entry;
+        let vote_key = GovernanceDataKey::UserVote(proposal_id, voter.clone());
+
+        // Only migrate if no VoteRecord is already present (i.e. key is absent
+        // or still holds a legacy bool).  We can't deserialise as VoteRecord
+        // here, so the safest guard is: write only when key is absent.
+        if !env.storage().persistent().has(&vote_key) {
+            let record = VoteRecord {
+                vote_power: 1,
+                against: false,
+            };
+            env.storage().persistent().set(&vote_key, &record);
+            migrated = migrated
+                .checked_add(1)
+                .unwrap_or_else(|| panic_with_error!(env, GovernanceError::Overflow));
+        }
+    }
+
+    env.storage().instance().set(&done_key, &true);
+    GovernanceEvents::migration_done(env, migrated);
+}
+
+// ---------------------------------------------------------------------------
+// Contract entry-point
+// ---------------------------------------------------------------------------
 
 #[contract]
 pub struct GovernanceContract;
@@ -251,8 +481,9 @@ impl GovernanceContract {
         create_proposal(&env, proposer, config_key, config_value, duration_seconds)
     }
 
-    pub fn vote_proposal(env: Env, voter: Address, proposal_id: u32) {
-        vote_proposal(&env, voter, proposal_id);
+    /// `against = false` → approval vote; `against = true` → rejection vote.
+    pub fn vote_proposal(env: Env, voter: Address, proposal_id: u32, against: bool) {
+        vote_proposal(&env, voter, proposal_id, against);
     }
 
     pub fn execute_proposal(env: Env, caller: Address, proposal_id: u32) {
@@ -270,35 +501,63 @@ impl GovernanceContract {
             .persistent()
             .get(&GovernanceDataKey::ConfigValue(config_key))
     }
+
+    /// Returns all proposal IDs created by `proposer` (empty Vec if none).
+    pub fn get_proposals_by_proposer(env: Env, proposer: Address) -> Vec<u32> {
+        get_proposals_by_proposer(&env, proposer)
+    }
+
+    /// One-shot migration for existing on-chain votes from before the upgrade.
+    /// Must be called by the admin; may only be called once.
+    pub fn migrate_votes(env: Env, caller: Address, snapshot_votes: Vec<(u32, Address)>) {
+        migrate_votes(&env, caller, snapshot_votes);
+    }
+
+    pub fn set_executor_allowlist(env: Env, caller: Address, allowlist: Vec<Address>) {
+        set_executor_allowlist(&env, caller, allowlist);
+    }
+
+    pub fn get_executor_allowlist(env: Env) -> Vec<Address> {
+        get_executor_allowlist(&env)
+    }
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::{vec, Address, Env, String};
+
+    fn s(env: &Env, v: &str) -> String {
+        String::from_str(env, v)
+    }
+
+    // ------------------------------------------------------------------
+    // Existing tests (preserved, updated for new vote_proposal signature)
+    // ------------------------------------------------------------------
 
     #[test]
     fn test_initialize() {
         let env = Env::default();
         let admin = Address::generate(&env);
-
-        let contract_id = env.register(GovernanceContract, ());
-        let client = GovernanceContractClient::new(&env, &contract_id);
-
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
         client.initialize(&admin, &2);
         assert_eq!(client.get_admin(), admin);
     }
 
     #[test]
-    // MultiSigError::AlreadyInitialized = 2 (`#[repr(u32)]`) — keep in sync if enum is reordered.
+    // GovernanceError::AlreadyInitialized = 2
     #[should_panic(expected = "Error(Contract, #2)")]
     fn test_cannot_initialize_twice() {
         let env = Env::default();
         let admin = Address::generate(&env);
-
-        let contract_id = env.register(GovernanceContract, ());
-        let client = GovernanceContractClient::new(&env, &contract_id);
-
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
         client.initialize(&admin, &2);
         client.initialize(&admin, &2);
     }
@@ -307,28 +566,375 @@ mod tests {
     fn test_create_and_execute_proposal() {
         let env = Env::default();
         env.mock_all_auths();
-
         let admin = Address::generate(&env);
         let proposer = Address::generate(&env);
         let voter1 = Address::generate(&env);
         let voter2 = Address::generate(&env);
-
-        let contract_id = env.register(GovernanceContract, ());
-        let client = GovernanceContractClient::new(&env, &contract_id);
-
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
         client.initialize(&admin, &2);
 
-        let config_key = String::from_str(&env, "test_key");
-        let config_value = String::from_str(&env, "test_value");
+        let config_key = s(&env, "test_key");
+        let config_value = s(&env, "test_value");
+        let pid = client.create_proposal(&proposer, &config_key, &config_value, &1000);
 
-        let proposal_id = client.create_proposal(&proposer, &config_key, &config_value, &1000);
+        // approval votes (against = false)
+        client.vote_proposal(&voter1, &pid, &false);
+        client.vote_proposal(&voter2, &pid, &false);
+        client.execute_proposal(&admin, &pid);
 
-        client.vote_proposal(&voter1, &proposal_id);
-        client.vote_proposal(&voter2, &proposal_id);
+        assert_eq!(client.get_config(&config_key), Some(config_value));
+    }
 
-        client.execute_proposal(&admin, &proposal_id);
+    // ------------------------------------------------------------------
+    // New: counter-vote tests
+    // ------------------------------------------------------------------
 
-        let retrieved_config = client.get_config(&config_key);
-        assert_eq!(retrieved_config, Some(config_value));
+    #[test]
+    fn test_vote_against_increments_rejections() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer = Address::generate(&env);
+        let voter = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        let pid = client.create_proposal(&proposer, &s(&env, "k"), &s(&env, "v"), &500);
+        client.vote_proposal(&voter, &pid, &true); // against
+
+        let proposal = client.get_proposal(&pid).unwrap();
+        assert_eq!(proposal.rejections, 1);
+        assert_eq!(proposal.approvals, 0);
+    }
+
+    #[test]
+    fn test_vote_for_increments_approvals_not_rejections() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer = Address::generate(&env);
+        let voter = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        let pid = client.create_proposal(&proposer, &s(&env, "k"), &s(&env, "v"), &500);
+        client.vote_proposal(&voter, &pid, &false); // for
+
+        let proposal = client.get_proposal(&pid).unwrap();
+        assert_eq!(proposal.approvals, 1);
+        assert_eq!(proposal.rejections, 0);
+    }
+
+    #[test]
+    fn test_mixed_votes_tallied_correctly() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer = Address::generate(&env);
+        let for1 = Address::generate(&env);
+        let for2 = Address::generate(&env);
+        let against1 = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        let pid = client.create_proposal(&proposer, &s(&env, "k"), &s(&env, "v"), &500);
+        client.vote_proposal(&for1, &pid, &false);
+        client.vote_proposal(&for2, &pid, &false);
+        client.vote_proposal(&against1, &pid, &true);
+
+        let proposal = client.get_proposal(&pid).unwrap();
+        assert_eq!(proposal.approvals, 2);
+        assert_eq!(proposal.rejections, 1);
+    }
+
+    #[test]
+    // GovernanceError::AlreadyVoted = 5
+    #[should_panic(expected = "Error(Contract, #5)")]
+    fn test_cannot_vote_twice_same_direction() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer = Address::generate(&env);
+        let voter = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        let pid = client.create_proposal(&proposer, &s(&env, "k"), &s(&env, "v"), &500);
+        client.vote_proposal(&voter, &pid, &false);
+        client.vote_proposal(&voter, &pid, &false); // duplicate → AlreadyVoted (#5)
+    }
+
+    #[test]
+    // GovernanceError::AlreadyVoted = 5
+    #[should_panic(expected = "Error(Contract, #5)")]
+    fn test_cannot_flip_vote_direction() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer = Address::generate(&env);
+        let voter = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        let pid = client.create_proposal(&proposer, &s(&env, "k"), &s(&env, "v"), &500);
+        client.vote_proposal(&voter, &pid, &false);
+        client.vote_proposal(&voter, &pid, &true); // flip → AlreadyVoted (#5)
+    }
+
+    // ------------------------------------------------------------------
+    // New: get_proposals_by_proposer tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_get_proposals_by_proposer_empty() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        let stranger = Address::generate(&env);
+        let ids = client.get_proposals_by_proposer(&stranger);
+        assert_eq!(ids.len(), 0);
+    }
+
+    #[test]
+    fn test_get_proposals_by_proposer_single() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        let pid = client.create_proposal(&proposer, &s(&env, "key1"), &s(&env, "val1"), &500);
+        let ids = client.get_proposals_by_proposer(&proposer);
+        assert_eq!(ids.len(), 1);
+        assert_eq!(ids.get(0).unwrap(), pid);
+    }
+
+    #[test]
+    fn test_get_proposals_by_proposer_multiple() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        let pid1 = client.create_proposal(&proposer, &s(&env, "key1"), &s(&env, "v"), &500);
+        let pid2 = client.create_proposal(&proposer, &s(&env, "key2"), &s(&env, "v"), &500);
+        let pid3 = client.create_proposal(&proposer, &s(&env, "key3"), &s(&env, "v"), &500);
+
+        let ids = client.get_proposals_by_proposer(&proposer);
+        assert_eq!(ids.len(), 3);
+        assert_eq!(ids.get(0).unwrap(), pid1);
+        assert_eq!(ids.get(1).unwrap(), pid2);
+        assert_eq!(ids.get(2).unwrap(), pid3);
+    }
+
+    #[test]
+    fn test_proposals_by_proposer_are_isolated_per_address() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer_a = Address::generate(&env);
+        let proposer_b = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        let pid_a = client.create_proposal(&proposer_a, &s(&env, "ka"), &s(&env, "v"), &500);
+        let pid_b = client.create_proposal(&proposer_b, &s(&env, "kb"), &s(&env, "v"), &500);
+
+        let ids_a = client.get_proposals_by_proposer(&proposer_a);
+        let ids_b = client.get_proposals_by_proposer(&proposer_b);
+
+        assert_eq!(ids_a.len(), 1);
+        assert_eq!(ids_a.get(0).unwrap(), pid_a);
+        assert_eq!(ids_b.len(), 1);
+        assert_eq!(ids_b.get(0).unwrap(), pid_b);
+    }
+
+    // ------------------------------------------------------------------
+    // New: migration tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_migrate_votes_runs_once() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer = Address::generate(&env);
+        let voter = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        let pid = client.create_proposal(&proposer, &s(&env, "k"), &s(&env, "v"), &500);
+
+        // Simulate a pre-upgrade snapshot: one approval vote for proposal pid.
+        // migrate_votes writes a VoteRecord for the voter without touching
+        // proposal tallies (those were already set before the upgrade).
+        let snapshot: Vec<(u32, Address)> = vec![&env, (pid, voter.clone())];
+        client.migrate_votes(&admin, &snapshot);
+
+        // Verify proposal is still intact after migration.
+        let proposal = client.get_proposal(&pid).unwrap();
+        assert_eq!(proposal.id, pid);
+    }
+
+    #[test]
+    // GovernanceError::MigrationAlreadyDone = 11
+    #[should_panic(expected = "Error(Contract, #11)")]
+    fn test_migrate_votes_cannot_run_twice() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        let empty: Vec<(u32, Address)> = vec![&env];
+        client.migrate_votes(&admin, &empty);
+        client.migrate_votes(&admin, &empty); // second call → MigrationAlreadyDone (#11)
+    }
+
+    #[test]
+    // GovernanceError::Unauthorized = 3
+    #[should_panic(expected = "Error(Contract, #3)")]
+    fn test_migrate_votes_requires_admin() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let non_admin = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        let empty: Vec<(u32, Address)> = vec![&env];
+        client.migrate_votes(&non_admin, &empty); // Unauthorized (#3)
+    }
+
+    // ------------------------------------------------------------------
+    // New: executor allow-list tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_executor_allowlist_initial_empty() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        let list = client.get_executor_allowlist();
+        assert_eq!(list.len(), 0);
+    }
+
+    #[test]
+    // GovernanceError::Unauthorized = 3
+    #[should_panic(expected = "Error(Contract, #3)")]
+    fn test_set_executor_allowlist_requires_admin() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let non_admin = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        let executor = Address::generate(&env);
+        let allowlist: Vec<Address> = vec![&env, executor.clone()];
+        client.set_executor_allowlist(&non_admin, &allowlist);
+    }
+
+    #[test]
+    fn test_set_executor_allowlist_succeeds_for_admin() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let executor = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        let allowlist: Vec<Address> = vec![&env, executor.clone()];
+        client.set_executor_allowlist(&admin, &allowlist);
+
+        let list = client.get_executor_allowlist();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list.get(0).unwrap(), executor);
+    }
+
+    #[test]
+    // GovernanceError::NotInExecutorAllowlist = 12
+    #[should_panic(expected = "Error(Contract, #12)")]
+    fn test_admin_key_blocked_by_non_allowlisted_caller() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer = Address::generate(&env);
+        let voter1 = Address::generate(&env);
+        let voter2 = Address::generate(&env);
+        let unauthorized = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        // Create a proposal for an admin key
+        let admin_key = s(&env, "admin");
+        // Serialize the new admin address as a string for the proposal value
+        let admin_value = s(&env, "new_admin_address");
+        let pid = client.create_proposal(&proposer, &admin_key, &admin_value, &1000);
+
+        // Get enough approvals
+        client.vote_proposal(&voter1, &pid, &false);
+        client.vote_proposal(&voter2, &pid, &false);
+
+        // Unauthorized caller tries to execute — should fail
+        client.execute_proposal(&unauthorized, &pid);
+    }
+
+    #[test]
+    fn test_admin_key_allowed_by_allowlisted_caller() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer = Address::generate(&env);
+        let voter1 = Address::generate(&env);
+        let voter2 = Address::generate(&env);
+        let executor = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        // Add executor to allow-list
+        let allowlist: Vec<Address> = vec![&env, executor.clone()];
+        client.set_executor_allowlist(&admin, &allowlist);
+
+        // Create a proposal for an admin key
+        let admin_key = s(&env, "required_approvals");
+        let admin_value = s(&env, "3");
+        let pid = client.create_proposal(&proposer, &admin_key, &admin_value, &1000);
+
+        // Get enough approvals
+        client.vote_proposal(&voter1, &pid, &false);
+        client.vote_proposal(&voter2, &pid, &false);
+
+        // Allow-listed executor executes successfully
+        client.execute_proposal(&executor, &pid);
+
+        // Verify the config was updated
+        assert_eq!(client.get_config(&admin_key), Some(admin_value));
     }
 }

@@ -10,6 +10,8 @@ import {
   csrfProtection,
 } from './common/middleware/csrf.middleware';
 import { compressionMiddleware } from './common/middleware/compression.middleware';
+import { idempotencyMiddleware } from './common/middleware/idempotency.middleware';
+import { CacheService } from './cache/cache.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -35,6 +37,10 @@ async function bootstrap() {
   app.use(csrfCookieParser);
   app.use(csrfProtection);
   app.use(csrfErrorHandler);
+
+  // Issue 104 — Idempotency-Key support for mutation endpoints.
+  const cacheService = app.get(CacheService);
+  app.use(idempotencyMiddleware(cacheService));
 
   // Validation
   app.useGlobalPipes(

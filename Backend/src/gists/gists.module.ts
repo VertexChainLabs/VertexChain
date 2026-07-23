@@ -12,9 +12,10 @@ import {
   NearbyCacheControlInterceptor,
   GistIdCacheControlInterceptor,
 } from '../common/interceptors/cache-control.interceptor';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Gist]), GeoModule, IpfsModule, SorobanModule, CacheModule],
+  imports: [TypeOrmModule.forFeature([Gist]), GeoModule, IpfsModule, SorobanModule, CacheModule, AuthModule],
   controllers: [GistsController],
   providers: [
     GistRepository,

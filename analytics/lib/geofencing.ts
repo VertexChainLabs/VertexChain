@@ -53,17 +53,28 @@ export function computeRegionStats(gists: GistPoint[]): RegionStats {
   );
 }
 
-const STORAGE_KEY = 'vertexchain-geo-regions';
-
-export function loadRegions(): GeoRegion[] {
-  if (typeof window === 'undefined') return [];
+export async function loadRegions(): Promise<GeoRegion[]> {
+  if (typeof window === 'undefined') {
+    try {
+      const pool = (await import('./db')).default;
+      const { rows } = await pool.query('SELECT id, name, polygon FROM regions ORDER BY created_at ASC');
+      return rows;
+    } catch (error) {
+      console.error('Failed to load regions from database:', error);
+      return [];
+    }
+  }
   try {
-    return JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '[]') as GeoRegion[];
-  } catch {
+    const res = await fetch('/api/regions');
+    if (!res.ok) throw new Error('Failed to fetch');
+    return await res.json();
+  } catch (error) {
+    console.error('Failed to load regions from API:', error);
     return [];
   }
 }
 
-export function saveRegions(regions: GeoRegion[]): void {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(regions));
+export async function saveRegions(regions: GeoRegion[]): Promise<void> {
+  // Individual mutations are handled via API endpoints.
+  // This helper is kept for backwards compatibility.
 }
