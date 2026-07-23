@@ -83,6 +83,48 @@ jobs:
       - name: cargo build (wasm32 release)
         run: cargo build --locked --workspace --target wasm32-unknown-unknown --release
 
+  contracts-audit:
+    name: Contracts Audit (cargo-deny / cargo-audit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contracts
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      # Scan for license conflicts, duplicate crate versions, and
+      # unmaintained/vulnerable dependencies.  The deny.toml config
+      # controls thresholds and allow-lists.
+      - name: cargo deny check
+        run: cargo deny check --show-stats
+
+      # Fetch the latest RustSec advisory database and compare against
+      # every crate in the workspace.  Exits non-zero (fails the build)
+      # when HIGH or CRITICAL advisories are found.
+      - name: cargo audit
+        run: cargo audit --deny=warnings
+
   backend:
     uses: ./.github/workflows/node-matrix.yml
     with:
