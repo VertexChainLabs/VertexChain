@@ -7,15 +7,15 @@
 
 [advisories]
 # Fail the build when a crate advisory has a vulnerability.
-vulnerability = "deny"
+vulnerability = { level = "deny", collection = "all" }
 # Warn about unmaintained crates — these are not direct security threats but
 # indicate eventual bit-rot.
-unmaintained = "warn"
+unmaintained = { level = "warn", collection = "all" }
 # Warn about yanked crate versions so they can be updated before they cause
 # resolution failures for new contributors.
-yanked = "warn"
+yanked = { level = "warn", collection = "all" }
 # Treat unsoundness annotations as hard errors — they are effectively bugs.
-unsound = "deny"
+unsound = { level = "deny", collection = "all" }
 # Ignore known, accepted-risk advisories here. Each entry is the advisory ID
 # from https://rustsec.org/advisories/.
 ignore = []
