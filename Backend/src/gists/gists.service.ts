@@ -232,5 +232,9 @@ export class GistsService {
     const pattern = `gist:nearby:${lat.toFixed(4)}:${lon.toFixed(4)}:*`;
     await this.cacheService.delPattern(pattern);
     this.logger.debug(`Invalidated nearby cache pattern: ${pattern}`);
+
+    // Purge CDN cache using cache tags
+    const locationCell = this.geoService.encode(lat, lon);
+    await this.cacheService.purgeCdnTags([`gist:nearby:${locationCell}`]);
   }
 }
