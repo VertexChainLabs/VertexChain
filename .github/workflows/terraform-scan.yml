@@ -74,7 +74,8 @@ jobs:
           # fails on new regressions, not the 85+ known issues.
           # .checkov.baseline is auto-generated via `checkov --create-baseline`
           # and committed to the repo so CI compares against known issues.
-          baseline: .checkov.baseline
+          # Path is relative to the workspace root (checkout directory).
+          baseline: ${{ env.TF_WORKING_DIR }}/.checkov.baseline
           # Only display failed checks in the action log for a cleaner
           # scan summary.
           quiet: true
