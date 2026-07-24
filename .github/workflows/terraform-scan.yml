@@ -1,0 +1,71 @@
+name: Terraform Security Scan
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'infrastructure/terraform/**'
+  push:
+    branches: [main]
+    paths:
+      - 'infrastructure/terraform/**'
+  workflow_dispatch:
+
+# Cancel any previous in-progress run for the same ref so superseded
+# commits on a PR don't waste runner minutes.
+concurrency:
+  group: terraform-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  TF_WORKING_DIR: infrastructure/terraform
+
+jobs:
+  # -------------------------------------------------------------------------
+  # tfsec – static analysis of Terraform templates for security
+  # misconfigurations.  Reads .tfsec.yml from the working directory to
+  # determine minimum severity (HIGH / CRITICAL).
+  # -------------------------------------------------------------------------
+  tfsec:
+    name: tfsec
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: ${{ env.TF_WORKING_DIR }}
+          # soft_fail: false causes the step to exit with code 1 (and fail the
+          # job) when any finding at or above the configured severity exists.
+          soft_fail: false
+          format: table
+
+  # -------------------------------------------------------------------------
+  # checkov – comprehensive policy-as-code scanner covering CIS benchmarks,
+  # HIPAA, GDPR, and hundreds of built-in Terraform / K8s rules.
+  # -------------------------------------------------------------------------
+  checkov:
+    name: checkov
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: ${{ env.TF_WORKING_DIR }}
+          framework: terraform
+          # soft_fail: false causes the step to exit with code 1 when
+          # checkov finds any FAILED evaluation (skipped / passed checks
+          # do not affect the exit code).
+          soft_fail: false
+          # Use CLI output for a human-readable scan summary in the action log.
+          output_format: cli

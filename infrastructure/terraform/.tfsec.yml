@@ -1,0 +1,7 @@
+# tfsec configuration for VertexChain Terraform infrastructure
+# Used by CI (terraform-scan.yml) to gate on HIGH/CRITICAL findings.
+#
+# For the full list of options see:
+#   https://aquasecurity.github.io/tfsec/latest/guides/configuration/config/
+
+minimum_severity: HIGH
