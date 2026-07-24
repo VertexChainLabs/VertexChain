@@ -26,8 +26,8 @@ module "network" {
   name_prefix = local.name_prefix
   vpc_cidr    = var.vpc_cidr
 
-  availability_zones  = var.availability_zones
-  public_subnet_cidrs = var.public_subnet_cidrs
+  availability_zones   = var.availability_zones
+  public_subnet_cidrs  = var.public_subnet_cidrs
   private_subnet_cidrs = var.private_subnet_cidrs
 
   tags = local.common_tags
@@ -44,14 +44,14 @@ module "data" {
     aws.dr = aws.dr
   }
 
-  name_prefix       = local.name_prefix
-  region            = var.region
+  name_prefix        = local.name_prefix
+  region             = var.region
   private_subnet_ids = module.network.private_subnet_ids
 
   security_group_db_id    = module.network.security_group_db_id
   security_group_redis_id = module.network.security_group_redis_id
 
-  backup_iam_role_arn       = aws_iam_role.backup.arn
+  backup_iam_role_arn        = aws_iam_role.backup.arn
   enable_cross_region_backup = var.enable_cross_region_backup
 
   # RDS
@@ -74,9 +74,9 @@ module "data" {
 module "compute" {
   source = "./modules/compute"
 
-  name_prefix       = local.name_prefix
-  environment       = var.environment
-  vpc_id            = module.network.vpc_id
+  name_prefix        = local.name_prefix
+  environment        = var.environment
+  vpc_id             = module.network.vpc_id
   public_subnet_ids  = module.network.public_subnet_ids
   private_subnet_ids = module.network.private_subnet_ids
 
@@ -94,11 +94,11 @@ module "compute" {
   asg_desired_size = var.asg_desired_size
 
   # EKS
-  eks_version             = var.eks_version
-  eks_node_instance_type  = var.eks_node_instance_type
-  eks_desired_size        = var.eks_desired_size
-  eks_min_size            = var.eks_min_size
-  eks_max_size            = var.eks_max_size
+  eks_version            = var.eks_version
+  eks_node_instance_type = var.eks_node_instance_type
+  eks_desired_size       = var.eks_desired_size
+  eks_min_size           = var.eks_min_size
+  eks_max_size           = var.eks_max_size
 
   tags = local.common_tags
 }
