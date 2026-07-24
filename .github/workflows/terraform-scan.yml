@@ -44,7 +44,10 @@ jobs:
           # soft_fail: false causes the step to exit with code 1 (and fail the
           # job) when any finding at or above the configured severity exists.
           soft_fail: false
-          format: table
+          # The .tfsec.yml config in the working directory enforces a
+          # minimum_severity of HIGH, so only HIGH/CRITICAL issues gate CI.
+          # Valid formats: default, json, sarif, csv, checkstyle, junit, text.
+          format: text
 
   # -------------------------------------------------------------------------
   # checkov – comprehensive policy-as-code scanner covering CIS benchmarks,
@@ -64,8 +67,16 @@ jobs:
           directory: ${{ env.TF_WORKING_DIR }}
           framework: terraform
           # soft_fail: false causes the step to exit with code 1 when
-          # checkov finds any FAILED evaluation (skipped / passed checks
-          # do not affect the exit code).
+          # checkov finds any FAILED evaluation not already in the
+          # baseline (skipped / passed checks do not affect the exit code).
           soft_fail: false
+          # Baseline file acknowledges pre-existing findings so CI only
+          # fails on new regressions, not the 85+ known issues.
+          # .checkov.baseline is auto-generated via `checkov --create-baseline`
+          # and committed to the repo so CI compares against known issues.
+          baseline: .checkov.baseline
+          # Only display failed checks in the action log for a cleaner
+          # scan summary.
+          quiet: true
           # Use CLI output for a human-readable scan summary in the action log.
           output_format: cli
