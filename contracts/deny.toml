@@ -1,0 +1,85 @@
+# cargo-deny configuration for VertexChain Solidity/Soroban contracts.
+#
+# This file is consumed by `cargo deny check`, which is invoked during CI
+# (see the `contracts-audit` job in .github/workflows/ci.yml).
+#
+# Reference: https://embarkstudios.github.io/cargo-deny/
+
+[advisories]
+# cargo-deny v0.20+ always treats vulnerability advisories as hard errors.
+# No `vulnerability` key is needed — it is enabled by default.
+#
+# Scope for unmaintained crate advisories:
+#   "all"       — check every crate in the dependency graph.
+#   "workspace" — only check workspace members.
+#   "transitive"— check workspace members and their transitive deps.
+#   "none"      — skip unmaintained checks entirely.
+unmaintained = "workspace"
+# Lint level for yanked crate advisories:
+#   "deny"  — fail the build.
+#   "warn"  — emit a warning but don't fail.
+#   "allow" — silently ignore.
+yanked = "warn"
+# Scope for unsoundness advisories (same values as unmaintained).
+# Default is "workspace".
+unsound = "workspace"
+# Ignore known, accepted-risk advisories here. Each entry is the advisory ID
+# from https://rustsec.org/advisories/.
+ignore = []
+
+[licenses]
+# cargo-deny v0.20+ is deny-by-default: anything not in `allow` is denied.
+# Allow-listed SPDX identifiers — all transitive dependencies must be covered
+# by one of these. Add others when a new dependency introduces a license not
+# already listed here. OSI-approved / FSF-free / commonly-used OSS licenses
+# are preferred; proprietary or copy-left licenses should be reviewed before
+# being added.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "ISC",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+    "OpenSSL",
+    "MPL-2.0",
+]
+# Confidence threshold for license file detection (0.0 to 1.0).
+confidence-threshold = 0.8
+# Suppress warnings when an allow-listed license is not used by any crate.
+unused-allowed-license = "allow"
+# Per-crate exceptions may be listed here for crates that need a license
+# not in the global allow-list. Add entries like:
+# [[licenses.exceptions]]
+# allow = ["Zlib"]
+# name = "adler32"
+# version = "1.0"
+
+[bans]
+# Prevent duplicate versions of the same crate in the dependency graph.
+# Multiple versions are a source of bloat and can silently introduce
+# incompatibilities.
+multiple-versions = "warn"
+# Crates whose duplicate versions are accepted (e.g., when two different major
+# versions are required by separate dependencies).
+# skip = [
+#     { name = "syn", version = "1" },
+# ]
+skip = []
+# Crates whose transitive dependency trees are ignored for duplicate detection.
+# skip-tree = [
+#     { name = "criterion", version = "0.5" },
+# ]
+skip-tree = []
+
+[sources]
+# Only allow crates published to crates.io. Git / path dependencies should
+# be rare and reviewed.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-git = []
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
