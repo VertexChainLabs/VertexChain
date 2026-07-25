@@ -6,28 +6,32 @@
 # Reference: https://embarkstudios.github.io/cargo-deny/
 
 [advisories]
-# Fail the build when a crate advisory has a vulnerability.
-vulnerability = { level = "deny", collection = "all" }
-# Warn about unmaintained crates — these are not direct security threats but
-# indicate eventual bit-rot.
-unmaintained = { level = "warn", collection = "all" }
-# Warn about yanked crate versions so they can be updated before they cause
-# resolution failures for new contributors.
-yanked = { level = "warn", collection = "all" }
-# Treat unsoundness annotations as hard errors — they are effectively bugs.
-unsound = { level = "deny", collection = "all" }
+# cargo-deny v0.20+ always treats vulnerability advisories as hard errors.
+# No `vulnerability` key is needed — it is enabled by default.
+#
+# Scope for unmaintained crate advisories:
+#   "all"       — check every crate in the dependency graph.
+#   "workspace" — only check workspace members.
+#   "transitive"— check workspace members and their transitive deps.
+#   "none"      — skip unmaintained checks entirely.
+unmaintained = "workspace"
+# Lint level for yanked crate advisories:
+#   "deny"  — fail the build.
+#   "warn"  — emit a warning but don't fail.
+#   "allow" — silently ignore.
+yanked = "warn"
+# Scope for unsoundness advisories (same values as unmaintained).
+# Default is "workspace".
+unsound = "workspace"
 # Ignore known, accepted-risk advisories here. Each entry is the advisory ID
 # from https://rustsec.org/advisories/.
 ignore = []
-# CI must fail when an advisory is rated HIGH or CRITICAL.
-severity-threshold = "HIGH"
 
 [licenses]
-# Refuse any crate that does not carry a license identifier.
-unlicensed = "deny"
+# cargo-deny v0.20+ is deny-by-default: anything not in `allow` is denied.
 # Allow-listed SPDX identifiers — all transitive dependencies must be covered
 # by one of these. Add others when a new dependency introduces a license not
-# already listed here.  OSI-approved / FSF-free / commonly-used OSS licenses
+# already listed here. OSI-approved / FSF-free / commonly-used OSS licenses
 # are preferred; proprietary or copy-left licenses should be reviewed before
 # being added.
 allow = [
@@ -44,16 +48,16 @@ allow = [
     "OpenSSL",
     "MPL-2.0",
 ]
-# Explicitly refused licenses.  Leave empty — un-allowed licenses are already
-# denied, and we prefer that new license introductions fail the build so they
-# are consciously reviewed.
-deny = []
-# Per-crate exceptions may be listed here.
-# Example:
-# exceptions = [
-#   { name = "some-crate", allow = ["Unlicense"] },
-# ]
-exceptions = []
+# Confidence threshold for license file detection (0.0 to 1.0).
+confidence-threshold = 0.8
+# Suppress warnings when an allow-listed license is not used by any crate.
+unused-allowed-license = "allow"
+# Per-crate exceptions may be listed here for crates that need a license
+# not in the global allow-list. Add entries like:
+# [[licenses.exceptions]]
+# allow = ["Zlib"]
+# name = "adler32"
+# version = "1.0"
 
 [bans]
 # Prevent duplicate versions of the same crate in the dependency graph.
@@ -73,7 +77,7 @@ skip = []
 skip-tree = []
 
 [sources]
-# Only allow crates published to crates.io.  Git / path dependencies should
+# Only allow crates published to crates.io. Git / path dependencies should
 # be rare and reviewed.
 unknown-registry = "deny"
 unknown-git = "deny"

@@ -120,10 +120,18 @@ jobs:
         run: cargo deny check --show-stats
 
       # Fetch the latest RustSec advisory database and compare against
-      # every crate in the workspace.  Exits non-zero (fails the build)
-      # when HIGH or CRITICAL advisories are found.
+      # every crate in the workspace. Exits non-zero (fails the build)
+      # when any advisory is found.
+      #
+      # Ignored advisories:
+      #   RUSTSEC-2026-0009 — time v0.3.36 (DoS via stack exhaustion)
+      #     Cannot update: time-core >=0.1.8 requires edition2024 (Rust >=1.85),
+      #     but the contract-builder Docker image pins rust:1.84-slim.
+      #   RUSTSEC-2024-0388 — derivative v2.2.0 (unmaintained)
+      #   RUSTSEC-2024-0436 — paste v1.0.15 (unmaintained)
+      #     Cannot upgrade: transitive dependencies of the Soroban SDK.
       - name: cargo audit
-        run: cargo audit --deny=warnings
+        run: cargo audit --deny=warnings --ignore RUSTSEC-2026-0009 --ignore RUSTSEC-2024-0388 --ignore RUSTSEC-2024-0436
 
   backend:
     uses: ./.github/workflows/node-matrix.yml
