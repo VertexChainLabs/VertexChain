@@ -119,6 +119,7 @@ export default function Map() {
 
       <motion.button
         onClick={() => setIsModalOpen(true)}
+        data-testid="map-add-gist-button"
         // 3. Animation props for pulsing effect
         animate={{ scale: [1, 1.1, 1] }}
         transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}

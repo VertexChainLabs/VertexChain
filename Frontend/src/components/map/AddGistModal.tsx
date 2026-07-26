@@ -72,6 +72,7 @@ export default function AddGistModal({
             role="dialog"
             aria-modal="true"
             aria-labelledby="add-gist-title"
+            data-testid="map-add-gist-modal"
             initial={{ y: '100%' }}
             animate={{ y: '0%' }}
             exit={{ y: '100%' }}
@@ -88,12 +89,14 @@ export default function AddGistModal({
               placeholder="What's the gist? (max 280 characters)"
               maxLength={280}
               aria-label="Gist content"
+              data-testid="map-add-gist-modal-input"
               className="w-full p-3 border rounded-lg h-28 bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <button
               onClick={handleSubmit}
               disabled={isLoading}
               aria-busy={isLoading}
+              data-testid="map-add-gist-modal-submit"
               className="w-full mt-4 px-6 py-3 text-lg font-semibold text-white  rounded-lg   bg-gradient-to-r from-purple-600 via-blue-600 to-pink-400 
                             bg-[size:200%_auto] 
                             hover:bg-[position:100%_center] 
