@@ -64,7 +64,7 @@ jobs:
     steps:
       # ── 1. Checkout ────────────────────────────────────────────────────────
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # A full clone is not needed; Renovate fetches what it needs via the
           # GitHub API.  A shallow fetch keeps this step fast.
