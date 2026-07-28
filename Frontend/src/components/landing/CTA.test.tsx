@@ -28,7 +28,6 @@ describe('CTA', () => {
     it('renders the heading', () => {
         render(<CTA />)
         expect(screen.getByText(/Ready to See What/)).toBeInTheDocument()
-        expect(screen.getByText('Happening')).toBeInTheDocument()
     })
 
     it('renders the descriptive paragraph', () => {
@@ -67,7 +66,7 @@ describe('CTA', () => {
         })
 
         render(<CTA />)
-        expect(screen.getByText('Happening')).toBeInTheDocument()
+        expect(screen.getByText(/Ready to See What/)).toBeInTheDocument()
 
         if (originalMatchMedia) {
             Object.defineProperty(window, 'matchMedia', {

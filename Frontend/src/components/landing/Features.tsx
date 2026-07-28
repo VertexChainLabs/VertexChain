@@ -6,6 +6,7 @@ import { AnimatedBeam } from "../magicui/animated-beam";
 import { Circle } from './Circle';
 import gsap from 'gsap';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { useTranslations } from 'next-intl';
 import {
   Lightbulb, MapPinIcon, UsersIcon, Siren,
   Globe, ShieldCheck, MessageSquare, TimerIcon, Zap
@@ -28,6 +29,7 @@ export const Features: React.FC = () => {
   const isMobile = useIsMobile();
   const reducedMotion = useReducedMotion();
   const [mounted, setMounted] = useState(false);
+  const t = useTranslations('Home');
 
   useEffect(() => {
     setMounted(true);
@@ -72,20 +74,20 @@ export const Features: React.FC = () => {
     {
       Icon: ShieldCheck,
       color: 'text-blue-400',
-      title: 'Truly Anonymous',
-      description: 'No accounts, no tracking. Secured by the blockchain.',
+      title: t('featureCards.anonymous.title'),
+      description: t('featureCards.anonymous.description'),
     },
     {
       Icon: MapPinIcon,
       color: 'text-purple-400',
-      title: 'Hyperlocal Focus',
-      description: "Filter out the noise. See what's relevant to your immediate area.",
+      title: t('featureCards.hyperlocal.title'),
+      description: t('featureCards.hyperlocal.description'),
     },
     {
       Icon: Zap,
       color: 'text-green-400',
-      title: 'Real-Time & Unfiltered',
-      description: 'Get live updates as they happen from your community.',
+      title: t('featureCards.realtime.title'),
+      description: t('featureCards.realtime.description'),
     },
   ];
 
@@ -102,11 +104,11 @@ export const Features: React.FC = () => {
         {/* Heading */}
         <div className="text-center mb-10">
           <Badge variant="outline" className="mb-4 bg-white text-gray-900 rounded-full px-3 py-2 text-sm sm:text-md">
-            Core Features
+            {t('features.badge')}
           </Badge>
-          <h2 className="text-2xl sm:text-3xl font-bold mb-2">The Hyperlocal Information Hub</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold mb-2">{t('features.heading')}</h2>
           <p className="text-gray-400 text-sm sm:text-base">
-            VertexChain brings together anonymous, real-world events and conversations into a single, interactive map.
+            {t('features.subtitle')}
           </p>
         </div>
 
