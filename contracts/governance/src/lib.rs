@@ -25,6 +25,17 @@ pub enum GovernanceDataKey {
     MigrationDone,
     /// Stores the list of addresses allowed to execute admin-key proposals.
     ExecutorAllowlist,
+    /// Total number of distinct addresses that have ever voted (across all proposals).
+    /// Used as the denominator for the quorum threshold.
+    TotalAddressedVoters,
+    /// Admin-configurable quorum threshold (percentage, 0–100).
+    /// A proposal is blocked from execution unless the total number of distinct
+    /// voters who have cast a vote on that proposal reaches this percentage of
+    /// `TotalAddressedVoters`.
+    MinimumQuorum,
+    /// Tracks whether an address has ever cast a vote (any proposal).
+    /// Used to ensure `TotalAddressedVoters` counts each unique voter only once.
+    HasEverVoted(Address),
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +86,7 @@ pub enum GovernanceError {
     InvalidInput = 10,
     MigrationAlreadyDone = 11,
     NotInExecutorAllowlist = 12,
+    QuorumNotMet = 13,
 }
 
 // ---------------------------------------------------------------------------
@@ -151,9 +163,17 @@ impl GovernanceEvents {
 
 const MAX_CONFIG_STRING_LENGTH: u32 = 256;
 
-pub fn initialize_governance(env: &Env, admin: Address, required_approvals: u32) {
+pub fn initialize_governance(
+    env: &Env,
+    admin: Address,
+    required_approvals: u32,
+    minimum_quorum: u32,
+) {
     if env.storage().instance().has(&GovernanceDataKey::Admin) {
         panic_with_error!(env, GovernanceError::AlreadyInitialized);
+    }
+    if minimum_quorum > 100 {
+        panic_with_error!(env, GovernanceError::InvalidInput);
     }
     env.storage()
         .instance()
@@ -161,6 +181,12 @@ pub fn initialize_governance(env: &Env, admin: Address, required_approvals: u32)
     env.storage()
         .instance()
         .set(&GovernanceDataKey::RequiredApprovals, &required_approvals);
+    env.storage()
+        .instance()
+        .set(&GovernanceDataKey::MinimumQuorum, &minimum_quorum);
+    env.storage()
+        .instance()
+        .set(&GovernanceDataKey::TotalAddressedVoters, &0u32);
     env.storage()
         .instance()
         .set(&GovernanceDataKey::ProposalCount, &0u32);
@@ -292,6 +318,22 @@ pub fn vote_proposal(env: &Env, voter: Address, proposal_id: u32, against: bool)
     };
     env.storage().persistent().set(&vote_key, &record);
 
+    // Increment total addressed voters (for quorum denominator) the first
+    // time this address ever votes on any proposal. Uses `HasEverVoted` to
+    // ensure each unique address is counted only once.
+    let has_voted_key = GovernanceDataKey::HasEverVoted(voter.clone());
+    if !env.storage().persistent().has(&has_voted_key) {
+        env.storage().persistent().set(&has_voted_key, &true);
+        let voter_count: u32 = env
+            .storage()
+            .instance()
+            .get(&GovernanceDataKey::TotalAddressedVoters)
+            .unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&GovernanceDataKey::TotalAddressedVoters, &(voter_count + 1));
+    }
+
     if against {
         proposal.rejections = proposal
             .rejections
@@ -357,6 +399,25 @@ pub fn execute_proposal(env: &Env, caller: Address, proposal_id: u32) {
 
     if proposal.approvals < required_approvals {
         panic_with_error!(env, GovernanceError::NotEnoughApprovals);
+    }
+
+    // --- Quorum check ---
+    let minimum_quorum: u32 = env
+        .storage()
+        .instance()
+        .get(&GovernanceDataKey::MinimumQuorum)
+        .unwrap_or(0);
+    if minimum_quorum > 0 {
+        let total_voters: u32 = env
+            .storage()
+            .instance()
+            .get(&GovernanceDataKey::TotalAddressedVoters)
+            .unwrap_or(0);
+        let participation = proposal.approvals + proposal.rejections;
+        // Quorum = (participation / total_voters) * 100 must be >= minimum_quorum
+        if total_voters == 0 || (participation * 100) / total_voters < minimum_quorum {
+            panic_with_error!(env, GovernanceError::QuorumNotMet);
+        }
     }
 
     if is_admin_config_key(env, &proposal.config_key) && caller != proposal.proposer {
@@ -456,8 +517,8 @@ pub struct GovernanceContract;
 
 #[contractimpl]
 impl GovernanceContract {
-    pub fn initialize(env: Env, admin: Address, required_approvals: u32) {
-        initialize_governance(&env, admin, required_approvals);
+    pub fn initialize(env: Env, admin: Address, required_approvals: u32, minimum_quorum: u32) {
+        initialize_governance(&env, admin, required_approvals, minimum_quorum);
     }
 
     pub fn update_admin(env: Env, current_admin: Address, new_admin: Address) {
@@ -520,6 +581,14 @@ impl GovernanceContract {
     pub fn get_executor_allowlist(env: Env) -> Vec<Address> {
         get_executor_allowlist(&env)
     }
+
+    pub fn set_minimum_quorum(env: Env, caller: Address, quorum: u32) {
+        set_minimum_quorum(&env, caller, quorum);
+    }
+
+    pub fn get_minimum_quorum(env: Env) -> u32 {
+        get_minimum_quorum(&env)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -546,7 +615,7 @@ mod tests {
         let admin = Address::generate(&env);
         let cid = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &cid);
-        client.initialize(&admin, &2);
+        client.initialize(&admin, &2, &0);
         assert_eq!(client.get_admin(), admin);
     }
 
@@ -558,8 +627,8 @@ mod tests {
         let admin = Address::generate(&env);
         let cid = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &cid);
-        client.initialize(&admin, &2);
-        client.initialize(&admin, &2);
+        client.initialize(&admin, &2, &0);
+        client.initialize(&admin, &2, &0);
     }
 
     #[test]
@@ -572,7 +641,7 @@ mod tests {
         let voter2 = Address::generate(&env);
         let cid = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &cid);
-        client.initialize(&admin, &2);
+        client.initialize(&admin, &2, &0);
 
         let config_key = s(&env, "test_key");
         let config_value = s(&env, "test_value");
@@ -599,7 +668,7 @@ mod tests {
         let voter = Address::generate(&env);
         let cid = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &cid);
-        client.initialize(&admin, &2);
+        client.initialize(&admin, &2, &0);
 
         let pid = client.create_proposal(&proposer, &s(&env, "k"), &s(&env, "v"), &500);
         client.vote_proposal(&voter, &pid, &true); // against
@@ -618,7 +687,7 @@ mod tests {
         let voter = Address::generate(&env);
         let cid = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &cid);
-        client.initialize(&admin, &2);
+        client.initialize(&admin, &2, &0);
 
         let pid = client.create_proposal(&proposer, &s(&env, "k"), &s(&env, "v"), &500);
         client.vote_proposal(&voter, &pid, &false); // for
@@ -639,7 +708,7 @@ mod tests {
         let against1 = Address::generate(&env);
         let cid = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &cid);
-        client.initialize(&admin, &2);
+        client.initialize(&admin, &2, &0);
 
         let pid = client.create_proposal(&proposer, &s(&env, "k"), &s(&env, "v"), &500);
         client.vote_proposal(&for1, &pid, &false);
@@ -662,7 +731,7 @@ mod tests {
         let voter = Address::generate(&env);
         let cid = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &cid);
-        client.initialize(&admin, &2);
+        client.initialize(&admin, &2, &0);
 
         let pid = client.create_proposal(&proposer, &s(&env, "k"), &s(&env, "v"), &500);
         client.vote_proposal(&voter, &pid, &false);
@@ -680,7 +749,7 @@ mod tests {
         let voter = Address::generate(&env);
         let cid = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &cid);
-        client.initialize(&admin, &2);
+        client.initialize(&admin, &2, &0);
 
         let pid = client.create_proposal(&proposer, &s(&env, "k"), &s(&env, "v"), &500);
         client.vote_proposal(&voter, &pid, &false);
@@ -698,7 +767,7 @@ mod tests {
         let admin = Address::generate(&env);
         let cid = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &cid);
-        client.initialize(&admin, &2);
+        client.initialize(&admin, &2, &0);
 
         let stranger = Address::generate(&env);
         let ids = client.get_proposals_by_proposer(&stranger);
@@ -713,7 +782,7 @@ mod tests {
         let proposer = Address::generate(&env);
         let cid = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &cid);
-        client.initialize(&admin, &2);
+        client.initialize(&admin, &2, &0);
 
         let pid = client.create_proposal(&proposer, &s(&env, "key1"), &s(&env, "val1"), &500);
         let ids = client.get_proposals_by_proposer(&proposer);
@@ -729,7 +798,7 @@ mod tests {
         let proposer = Address::generate(&env);
         let cid = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &cid);
-        client.initialize(&admin, &2);
+        client.initialize(&admin, &2, &0);
 
         let pid1 = client.create_proposal(&proposer, &s(&env, "key1"), &s(&env, "v"), &500);
         let pid2 = client.create_proposal(&proposer, &s(&env, "key2"), &s(&env, "v"), &500);
@@ -751,7 +820,7 @@ mod tests {
         let proposer_b = Address::generate(&env);
         let cid = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &cid);
-        client.initialize(&admin, &2);
+        client.initialize(&admin, &2, &0);
 
         let pid_a = client.create_proposal(&proposer_a, &s(&env, "ka"), &s(&env, "v"), &500);
         let pid_b = client.create_proposal(&proposer_b, &s(&env, "kb"), &s(&env, "v"), &500);
@@ -778,7 +847,7 @@ mod tests {
         let voter = Address::generate(&env);
         let cid = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &cid);
-        client.initialize(&admin, &2);
+        client.initialize(&admin, &2, &0);
 
         let pid = client.create_proposal(&proposer, &s(&env, "k"), &s(&env, "v"), &500);
 
@@ -802,7 +871,7 @@ mod tests {
         let admin = Address::generate(&env);
         let cid = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &cid);
-        client.initialize(&admin, &2);
+        client.initialize(&admin, &2, &0);
 
         let empty: Vec<(u32, Address)> = vec![&env];
         client.migrate_votes(&admin, &empty);
@@ -819,7 +888,7 @@ mod tests {
         let non_admin = Address::generate(&env);
         let cid = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &cid);
-        client.initialize(&admin, &2);
+        client.initialize(&admin, &2, &0);
 
         let empty: Vec<(u32, Address)> = vec![&env];
         client.migrate_votes(&non_admin, &empty); // Unauthorized (#3)
@@ -835,7 +904,7 @@ mod tests {
         let admin = Address::generate(&env);
         let cid = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &cid);
-        client.initialize(&admin, &2);
+        client.initialize(&admin, &2, &0);
 
         let list = client.get_executor_allowlist();
         assert_eq!(list.len(), 0);
@@ -851,7 +920,7 @@ mod tests {
         let non_admin = Address::generate(&env);
         let cid = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &cid);
-        client.initialize(&admin, &2);
+        client.initialize(&admin, &2, &0);
 
         let executor = Address::generate(&env);
         let allowlist: Vec<Address> = vec![&env, executor.clone()];
@@ -866,7 +935,7 @@ mod tests {
         let executor = Address::generate(&env);
         let cid = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &cid);
-        client.initialize(&admin, &2);
+        client.initialize(&admin, &2, &0);
 
         let allowlist: Vec<Address> = vec![&env, executor.clone()];
         client.set_executor_allowlist(&admin, &allowlist);
@@ -889,7 +958,7 @@ mod tests {
         let unauthorized = Address::generate(&env);
         let cid = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &cid);
-        client.initialize(&admin, &2);
+        client.initialize(&admin, &2, &0);
 
         // Create a proposal for an admin key
         let admin_key = s(&env, "admin");
@@ -916,7 +985,7 @@ mod tests {
         let executor = Address::generate(&env);
         let cid = env.register(GovernanceContract, ());
         let client = GovernanceContractClient::new(&env, &cid);
-        client.initialize(&admin, &2);
+        client.initialize(&admin, &2, &0);
 
         // Add executor to allow-list
         let allowlist: Vec<Address> = vec![&env, executor.clone()];
@@ -936,5 +1005,145 @@ mod tests {
 
         // Verify the config was updated
         assert_eq!(client.get_config(&admin_key), Some(admin_value));
+    }
+
+    // ------------------------------------------------------------------
+    // New: quorum tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_quorum_met_with_enough_participation() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer = Address::generate(&env);
+        let voter1 = Address::generate(&env);
+        let voter2 = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        // quorum = 50%, required_approvals = 2
+        client.initialize(&admin, &2, &50);
+
+        let pid = client.create_proposal(&proposer, &s(&env, "k"), &s(&env, "v"), &1000);
+
+        // 2 voters out of 2 total = 100% participation ≥ 50% quorum
+        client.vote_proposal(&voter1, &pid, &false);
+        client.vote_proposal(&voter2, &pid, &false);
+
+        client.execute_proposal(&admin, &pid);
+        assert_eq!(client.get_config(&s(&env, "k")), Some(s(&env, "v")));
+    }
+
+    #[test]
+    // GovernanceError::QuorumNotMet = 13
+    #[should_panic(expected = "Error(Contract, #13)")]
+    fn test_quorum_not_met_blocks_execution() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer = Address::generate(&env);
+        let voter1 = Address::generate(&env);
+        let voter2 = Address::generate(&env);
+        let voter3 = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        // quorum = 67%, required_approvals = 2
+        client.initialize(&admin, &2, &67);
+
+        let pid = client.create_proposal(&proposer, &s(&env, "k"), &s(&env, "v"), &1000);
+
+        // 2 approvals but there are 3 total voters (voter1, voter2, voter3)
+        // participation = 2/3 = 66.6% < 67% quorum
+        client.vote_proposal(&voter1, &pid, &false);
+        client.vote_proposal(&voter2, &pid, &false);
+        // voter3 never votes, so total voters = 2, participation = 2/2 = 100%
+        // We need to register voter3 for the quorum denominator.
+        // Let's create another proposal to register voter3:
+        let pid2 = client.create_proposal(&proposer, &s(&env, "k2"), &s(&env, "v2"), &1000);
+        client.vote_proposal(&voter3, &pid2, &false);
+
+        // Now total addressed voters = 3, proposal pid has 2 participants = 66% < 67%
+        client.execute_proposal(&admin, &pid);
+    }
+
+    #[test]
+    fn test_quorum_with_mixed_approval_rejection() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer = Address::generate(&env);
+        let voter1 = Address::generate(&env);
+        let voter2 = Address::generate(&env);
+        let voter3 = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        // quorum = 60%, required_approvals = 2
+        client.initialize(&admin, &2, &60);
+
+        let pid = client.create_proposal(&proposer, &s(&env, "k"), &s(&env, "v"), &1000);
+
+        // 2 approvals + 1 rejection = 3/3 participation = 100% ≥ 60% quorum
+        client.vote_proposal(&voter1, &pid, &false);
+        client.vote_proposal(&voter2, &pid, &false);
+        client.vote_proposal(&voter3, &pid, &true);
+
+        client.execute_proposal(&admin, &pid);
+        assert_eq!(client.get_config(&s(&env, "k")), Some(s(&env, "v")));
+    }
+
+    #[test]
+    fn test_quorum_zero_percent_always_passes() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer = Address::generate(&env);
+        let voter1 = Address::generate(&env);
+        let voter2 = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        // quorum = 0% disables the quorum check entirely
+        client.initialize(&admin, &2, &0);
+
+        let pid = client.create_proposal(&proposer, &s(&env, "k"), &s(&env, "v"), &1000);
+
+        client.vote_proposal(&voter1, &pid, &false);
+        client.vote_proposal(&voter2, &pid, &false);
+
+        client.execute_proposal(&admin, &pid);
+        assert!(true);
+    }
+
+    #[test]
+    // GovernanceError::InvalidInput = 10
+    #[should_panic(expected = "Error(Contract, #10)")]
+    fn test_quorum_greater_than_100_rejected() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2, &101);
+    }
+
+    #[test]
+    fn test_quorum_settable_to_100() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer = Address::generate(&env);
+        let voter1 = Address::generate(&env);
+        let voter2 = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        // quorum = 100% requires full participation
+        client.initialize(&admin, &2, &100);
+
+        let pid = client.create_proposal(&proposer, &s(&env, "k"), &s(&env, "v"), &1000);
+
+        // 2 approvals and 2 total voters → 100% participation
+        client.vote_proposal(&voter1, &pid, &false);
+        client.vote_proposal(&voter2, &pid, &false);
+
+        client.execute_proposal(&admin, &pid);
+        assert_eq!(client.get_config(&s(&env, "k")), Some(s(&env, "v")));
     }
 }
