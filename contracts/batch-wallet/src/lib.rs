@@ -224,26 +224,36 @@ impl BatchWalletContract {
         let mut successful: u32 = 0;
         let mut failed: u32 = 0;
 
-        // Check for duplicates within the batch
+        // Track addresses seen in *this batch* to handle duplicates gracefully
         let mut seen_addresses = Vec::new(&env);
+
+        // Process each request — duplicates within the batch yield
+        // WalletCreateResult::Failure(owner, DuplicateWallet) instead of
+        // panicking, so the rest of the batch can still succeed.
         for i in 0..requests.len() {
             let request = requests.get(i).unwrap();
             let owner = request.owner.clone();
 
-            // Check if this address was already seen in this batch
+            // Check for duplicate within the batch
+            let mut is_duplicate = false;
             for seen in seen_addresses.iter() {
                 if seen == owner {
-                    BatchWalletEvents::wallet_duplicate(&env, &owner);
-                    panic_with_error!(&env, BatchWalletError::DuplicateWallet);
+                    is_duplicate = true;
+                    break;
                 }
             }
-            seen_addresses.push_back(owner);
-        }
 
-        // Process each request
-        for i in 0..requests.len() {
-            let request = requests.get(i).unwrap();
-            let owner = request.owner.clone();
+            if is_duplicate {
+                BatchWalletEvents::wallet_duplicate(&env, &owner);
+                results.push_back(WalletCreateResult::Failure(
+                    owner,
+                    BatchWalletError::DuplicateWallet as u32,
+                ));
+                failed += 1;
+                continue;
+            }
+
+            seen_addresses.push_back(owner.clone());
 
             if let Some(_existing_wallet) = get_wallet(&env, owner.clone()) {
                 results.push_back(WalletCreateResult::Failure(
@@ -503,20 +513,46 @@ mod tests {
     }
 
     #[test]
-    // BatchWalletError::DuplicateWallet = 7 (`#[repr(u32)]`) — keep in sync if enum is reordered.
-    #[should_panic(expected = "Error(Contract, #7)")]
-    fn test_batch_create_wallets_duplicate_in_batch() {
+    fn test_batch_create_wallets_partial_success_with_duplicates() {
+        // Send N+1 requests where M are duplicates → result reports failed=M,
+        // others succeed, event wallet_duplicate emitted per duplicate.
         let (env, admin, client) = setup_test_env();
 
-        let owner = Address::generate(&env);
+        let owner1 = Address::generate(&env);
         let owner2 = Address::generate(&env);
+        let owner3 = Address::generate(&env);
 
+        // 5 requests: owner1, owner2, owner1 (duplicate), owner3, owner2 (duplicate)
         let mut requests: Vec<WalletCreateRequest> = Vec::new(&env);
-        requests.push_back(create_wallet_request(&env, owner.clone()));
+        requests.push_back(create_wallet_request(&env, owner1.clone()));
         requests.push_back(create_wallet_request(&env, owner2.clone()));
-        requests.push_back(create_wallet_request(&env, owner.clone()));
+        requests.push_back(create_wallet_request(&env, owner1.clone())); // duplicate
+        requests.push_back(create_wallet_request(&env, owner3.clone()));
+        requests.push_back(create_wallet_request(&env, owner2.clone())); // duplicate
 
-        client.batch_create_wallets(&admin, &requests);
+        let result = client.batch_create_wallets(&admin, &requests);
+
+        // 5 total, 3 unique → 3 succeed, 2 duplicates fail
+        assert_eq!(result.total_requests, 5);
+        assert_eq!(result.successful, 3);
+        assert_eq!(result.failed, 2);
+        assert_eq!(result.results.len(), 5);
+
+        // Verify wallets were created for unique owners only
+        assert!(client.get_wallet(&owner1).is_some());
+        assert!(client.get_wallet(&owner2).is_some());
+        assert!(client.get_wallet(&owner3).is_some());
+
+        // Verify duplicate entries are Failure with DuplicateWallet code (7)
+        let mut duplicate_count = 0;
+        for r in result.results.iter() {
+            if let WalletCreateResult::Failure(_, code) = r {
+                if code == BatchWalletError::DuplicateWallet as u32 {
+                    duplicate_count += 1;
+                }
+            }
+        }
+        assert_eq!(duplicate_count, 2);
     }
 
     #[test]
