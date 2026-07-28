@@ -11,6 +11,7 @@ import {
 } from './common/middleware/csrf.middleware';
 import { compressionMiddleware } from './common/middleware/compression.middleware';
 import { idempotencyMiddleware } from './common/middleware/idempotency.middleware';
+import { securityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 import { CacheService } from './cache/cache.service';
 
 async function bootstrap() {
@@ -22,6 +23,11 @@ async function bootstrap() {
   // downstream handler writes through the compressor; CORS preflights
   // (OPTIONS) are skipped ahead of all handlers via `req.method`.
   app.use(compressionMiddleware);
+
+  // Issue 95 — Security headers (CSP, COOP, Permissions-Policy).
+  // Registered after compression so headers are set on the uncompressed
+  // response and forwarded transparently by the compressor.
+  app.use(securityHeadersMiddleware);
 
   // Issue 78 — CORS
   const allowedOrigins = process.env.CORS_ORIGINS
