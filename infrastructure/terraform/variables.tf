@@ -1,7 +1,7 @@
 # =============================================================
 # Root module variable definitions
-# All variable declarations are consolidated here to avoid
-# duplicate-variable errors when Terraform loads the module.
+# All variable declarations are consolidated here. Duplicate
+# declarations in individual .tf files have been removed.
 # =============================================================
 
 # --------------- General ---------------
@@ -35,26 +35,42 @@ variable "project_name" {
   default     = "vertexchain"
 }
 
-# --------------- Networking ---------------
-
-variable "vpc_id" {
-  description = "VPC ID"
+variable "domain_name" {
+  description = "Custom domain name for Route53 / ACM / CloudFront"
   type        = string
+  default     = "vertexchain.io"
 }
+
+variable "alert_email" {
+  description = "Email address for SNS alert notifications"
+  type        = string
+  default     = "ops@vertexchain.io"
+}
+
+# --------------- Networking ---------------
 
 variable "vpc_cidr" {
   description = "VPC CIDR block"
   type        = string
+  default     = "10.0.0.0/16"
 }
 
-variable "private_subnet_ids" {
-  description = "List of private subnet IDs"
+variable "availability_zones" {
+  description = "List of availability zones to deploy into"
   type        = list(string)
+  default     = ["us-east-1a", "us-east-1b"]
 }
 
-variable "public_subnet_ids" {
-  description = "List of public subnet IDs"
+variable "public_subnet_cidrs" {
+  description = "CIDR blocks for public subnets (one per AZ)"
   type        = list(string)
+  default     = ["10.0.1.0/24", "10.0.2.0/24"]
+}
+
+variable "private_subnet_cidrs" {
+  description = "CIDR blocks for private subnets (one per AZ)"
+  type        = list(string)
+  default     = ["10.0.11.0/24", "10.0.12.0/24"]
 }
 
 # --------------- Tags ---------------
@@ -71,35 +87,24 @@ variable "owner" {
   default     = "platform-team"
 }
 
-# --------------- RDS ---------------
+# --------------- Compute ---------------
 
-variable "db_instance_class" {
-  description = "RDS instance class (e.g. db.t3.micro for dev, db.t3.medium for prod)"
+variable "ami_id" {
+  description = "AMI ID for EC2 instances (ASG launch template)"
   type        = string
-  default     = "db.t3.micro"
 }
 
-variable "db_password" {
-  description = "RDS master password — supply via AWS Secrets Manager or CI secret"
+variable "instance_type" {
+  description = "EC2 instance type for ASG launch template"
   type        = string
-  sensitive   = true
+  default     = "t3.medium"
 }
 
-# --------------- ElastiCache / Redis ---------------
-
-variable "redis_node_type" {
-  description = "ElastiCache node type (e.g. cache.t3.micro)"
+variable "eks_version" {
+  description = "Kubernetes version for the EKS cluster"
   type        = string
-  default     = "cache.t3.micro"
+  default     = "1.29"
 }
-
-variable "redis_num_cache_nodes" {
-  description = "Number of Redis cache nodes (≥2 enables automatic failover)"
-  type        = number
-  default     = 1
-}
-
-# --------------- EKS node group ---------------
 
 variable "eks_node_instance_type" {
   description = "EC2 instance type for EKS managed node group"
@@ -141,6 +146,34 @@ variable "asg_max_size" {
 
 variable "asg_desired_size" {
   description = "Desired ASG capacity"
+  type        = number
+  default     = 1
+}
+
+# --------------- RDS ---------------
+
+variable "db_instance_class" {
+  description = "RDS instance class (e.g. db.t3.micro for dev, db.t3.medium for prod)"
+  type        = string
+  default     = "db.t3.micro"
+}
+
+variable "db_password" {
+  description = "RDS master password — supply via AWS Secrets Manager or CI secret"
+  type        = string
+  sensitive   = true
+}
+
+# --------------- ElastiCache / Redis ---------------
+
+variable "redis_node_type" {
+  description = "ElastiCache node type (e.g. cache.t3.micro)"
+  type        = string
+  default     = "cache.t3.micro"
+}
+
+variable "redis_num_cache_nodes" {
+  description = "Number of Redis cache nodes (>=2 enables automatic failover)"
   type        = number
   default     = 1
 }

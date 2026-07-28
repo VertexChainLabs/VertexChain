@@ -7,16 +7,32 @@
 environment  = "prod"
 region       = "us-east-1"
 project_name = "vertexchain"
+domain_name  = "vertexchain.io"
+alert_email  = "ops@vertexchain.io"
 
-# Networking (fill in after VPC is created via bootstrap)
-vpc_id             = "vpc-REPLACE_PROD"
-vpc_cidr           = "10.2.0.0/16"
-private_subnet_ids = ["subnet-REPLACE_PROD_PRIVATE_1", "subnet-REPLACE_PROD_PRIVATE_2", "subnet-REPLACE_PROD_PRIVATE_3"]
-public_subnet_ids  = ["subnet-REPLACE_PROD_PUBLIC_1", "subnet-REPLACE_PROD_PUBLIC_2", "subnet-REPLACE_PROD_PUBLIC_3"]
+# Networking
+vpc_cidr             = "10.2.0.0/16"
+availability_zones   = ["us-east-1a", "us-east-1b", "us-east-1c"]
+public_subnet_cidrs  = ["10.2.1.0/24", "10.2.2.0/24", "10.2.3.0/24"]
+private_subnet_cidrs = ["10.2.11.0/24", "10.2.12.0/24", "10.2.13.0/24"]
 
 # Tags
 cost_center = "engineering"
 owner       = "platform-team"
+
+# Compute
+ami_id             = "ami-REPLACE_PROD"
+instance_type      = "t3.large"
+eks_version        = "1.29"
+eks_node_instance_type = "t3.large"
+eks_desired_size   = 3
+eks_min_size       = 2
+eks_max_size       = 10
+
+# ASG
+asg_min_size     = 2
+asg_max_size     = 10
+asg_desired_size = 3
 
 # RDS
 db_instance_class = "db.t3.medium"
@@ -25,13 +41,6 @@ db_instance_class = "db.t3.medium"
 redis_node_type       = "cache.t3.medium"
 redis_num_cache_nodes = 2
 
-# EKS node group
-eks_node_instance_type = "t3.large"
-eks_desired_size       = 3
-eks_min_size           = 2
-eks_max_size           = 10
-
-# ASG
-asg_min_size     = 2
-asg_max_size     = 10
-asg_desired_size = 3
+# Backup
+enable_cross_region_backup = true
+backup_retention_days      = 30
