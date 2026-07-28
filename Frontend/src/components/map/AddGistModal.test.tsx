@@ -12,20 +12,15 @@ vi.mock('framer-motion', () => ({
 }))
 
 const onClose = vi.fn()
-const onAddGist = vi.fn()
+const onAddGist = vi.fn().mockResolvedValue(undefined)
 
 const renderModal = (isOpen = true) =>
   render(<AddGistModal isOpen={isOpen} onClose={onClose} onAddGist={onAddGist} />)
 
 describe('AddGistModal', () => {
   beforeEach(() => {
-    vi.useFakeTimers()
     onClose.mockClear()
-    onAddGist.mockClear()
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
+    onAddGist.mockClear().mockResolvedValue(undefined)
   })
 
   it('does not render the dialog when isOpen is false', () => {
@@ -55,28 +50,38 @@ describe('AddGistModal', () => {
   it('does not call onAddGist when submitted with empty content', () => {
     renderModal()
     fireEvent.click(screen.getByRole('button', { name: /pin gist/i }))
-    act(() => { vi.advanceTimersByTime(2000) })
     expect(onAddGist).not.toHaveBeenCalled()
   })
 
-  it('shows loading state while submitting', () => {
+  it('shows loading state while submitting', async () => {
+    // Make onAddGist never resolve so we can observe the loading state
+    const deferred = new Promise<void>(() => {})
+    onAddGist.mockReturnValue(deferred)
+
     renderModal()
     fireEvent.change(screen.getByRole('textbox', { name: /gist content/i }), {
       target: { value: 'Traffic jam on the bridge!' },
     })
     fireEvent.click(screen.getByRole('button', { name: /pin gist/i }))
+
+    // Loading state should appear immediately
     expect(screen.getByRole('button', { name: /pinning/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /pinning/i })).toBeDisabled()
   })
 
-  it('calls onAddGist with the content and then onClose after 2s', () => {
+  it('calls onAddGist with the content and then onClose on success', async () => {
+    onAddGist.mockResolvedValue(undefined)
+
     renderModal()
     fireEvent.change(screen.getByRole('textbox', { name: /gist content/i }), {
       target: { value: 'Amazing suya spot just opened here!' },
     })
     fireEvent.click(screen.getByRole('button', { name: /pin gist/i }))
 
-    act(() => { vi.advanceTimersByTime(2000) })
+    // Wait for the async handler to complete
+    await act(async () => {
+      await Promise.resolve()
+    })
 
     expect(onAddGist).toHaveBeenCalledWith('Amazing suya spot just opened here!')
     expect(onClose).toHaveBeenCalledTimes(1)

@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 interface AddGistModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddGist: (content: string) => void;
+  onAddGist: (content: string) => Promise<void>;
 }
 
 export default function AddGistModal({
@@ -45,17 +45,18 @@ export default function AddGistModal({
     return () => document.removeEventListener('keydown', onKey);
   }, [isOpen, onClose]);
 
-  const handleSubmit = useCallback(() => {
-    if (!content.trim()) return;
+  const handleSubmit = useCallback(async () => {
+    if (!content.trim() || isLoading) return;
 
     setIsLoading(true);
-    setTimeout(() => {
-      onAddGist(content);
+    try {
+      await onAddGist(content);
       setContent('');
-      setIsLoading(false);
       onClose();
-    }, 2000);
-  }, [content, onAddGist, onClose]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [content, isLoading, onAddGist, onClose]);
 
   return (
     <AnimatePresence>
