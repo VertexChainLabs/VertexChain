@@ -4,7 +4,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import '@/styles/leaflet-dark.css';
 import { icon } from 'leaflet';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import AddGistModal from './AddGistModal';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -93,10 +93,28 @@ export default function Map() {
     type: 'success' | 'error';
   } | null>(null);
 
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clean up the toast timer on unmount
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current !== null) {
+        clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
+
   const showToast = useCallback(
     (message: string, type: 'success' | 'error') => {
+      // Clear any existing timer before setting a new one
+      if (toastTimerRef.current !== null) {
+        clearTimeout(toastTimerRef.current);
+      }
       setToast({ message, type });
-      setTimeout(() => setToast(null), 4000);
+      toastTimerRef.current = setTimeout(() => {
+        toastTimerRef.current = null;
+        setToast(null);
+      }, 4000);
     },
     [],
   );
