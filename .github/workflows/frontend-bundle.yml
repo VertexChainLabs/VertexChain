@@ -1,0 +1,44 @@
+name: Frontend Bundle Budget
+
+on:
+  pull_request:
+    paths:
+      - "Frontend/**"
+  push:
+    branches: [main]
+    paths:
+      - "Frontend/**"
+  workflow_dispatch:
+
+jobs:
+  bundle-budget:
+    name: Bundle Size Budget
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: "Frontend/.nvmrc"
+          cache: "npm"
+          cache-dependency-path: Frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Build Next.js app
+        run: npm run build
+
+      - name: Check bundle budget
+        run: node scripts/bundle-budget.mjs
+
+      - name: Upload budget report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-budget-report
+          path: Frontend/.next/bundle-budget.json
+          retention-days: 7
