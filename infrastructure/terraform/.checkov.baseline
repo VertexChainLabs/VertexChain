@@ -368,6 +368,19 @@
             ]
         },
         {
+            "file": "/backend.tf",
+            "findings": [
+                {
+                    "resource": "aws_s3_bucket.terraform_state",
+                    "check_ids": [
+                        "CKV2_AWS_62",
+                        "CKV_AWS_18",
+                        "CKV_AWS_144"
+                    ]
+                }
+            ]
+        },
+        {
             "file": "/cloudfront.tf",
             "findings": [
                 {
