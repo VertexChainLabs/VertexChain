@@ -8,7 +8,7 @@ export default function MapLoader() {
     () =>
       dynamic(() => import('@/components/map/Map'), {
         loading: () => (
-          <div role="status" aria-live="polite" className="flex items-center justify-center h-64 text-gray-400">
+          <div role="status" aria-live="polite" data-testid="map-loader" className="flex items-center justify-center h-64 text-gray-400">
             <span>Map is loading...</span>
           </div>
         ),
