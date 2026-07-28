@@ -26,6 +26,7 @@ export default defineConfig({
         'src/components/ui/grid-pattern.tsx',
         'src/components/landing/Circle.tsx',
         'src/components/landing/CTA.tsx',
+        'src/components/map/Map.tsx',
       ],
       thresholds: {
         lines: 70,
