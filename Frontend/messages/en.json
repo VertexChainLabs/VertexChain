@@ -1,0 +1,42 @@
+{
+  "Home": {
+    "title": "VertexChain - Hyperlocal Micro-Messaging",
+    "description": "VertexChain - Anonymous, location-aware micro-messaging on Stellar",
+    "skipToContent": "Skip to content",
+    "features": {
+      "badge": "Core Features",
+      "heading": "The Hyperlocal Information Hub",
+      "subtitle": "VertexChain brings together anonymous, real-world events and conversations into a single, interactive map."
+    },
+    "featureCards": {
+      "anonymous": {
+        "title": "Truly Anonymous",
+        "description": "No accounts, no tracking. Secured by the blockchain."
+      },
+      "hyperlocal": {
+        "title": "Hyperlocal Focus",
+        "description": "Filter out the noise. See what's relevant to your immediate area."
+      },
+      "realtime": {
+        "title": "Real-Time & Unfiltered",
+        "description": "Get live updates as they happen from your community."
+      }
+    },
+    "cta": {
+      "heading": "Ready to See What's <highlight>Happening</highlight>?",
+      "body": "From the bustling streets of Lagos to the quiet corners of your neighborhood, discover and share what's happening right now. Your community is waiting.",
+      "button": "Explore the Live Map"
+    },
+    "footer": {
+      "copyright": "© {year} VertexChain. Powered by the <stellar>Stellar Network</stellar>.",
+      "privacy": "Privacy",
+      "terms": "Terms",
+      "docs": "Docs"
+    },
+    "nav": {
+      "map": "Map",
+      "logoAlt": "VertexChain Logo",
+      "brandName": "VertexChain"
+    }
+  }
+}

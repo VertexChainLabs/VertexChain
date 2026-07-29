@@ -8,6 +8,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useRef, useState, useEffect } from 'react';
 import { GridPattern } from '@/components/ui/grid-pattern';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -16,6 +17,7 @@ export default function CTA() {
   const containerRef = useRef(null);
   const reducedMotion = useReducedMotion();
   const [mounted, setMounted] = useState(false);
+  const t = useTranslations('Home');
 
   useEffect(() => {
     setMounted(true);
@@ -74,8 +76,9 @@ export default function CTA() {
                 : undefined
             }
           >
-            Ready to See What&apos;s{' '}
-            <span className="text-purple-500">Happening</span>?
+            {t.rich('cta.heading', {
+              highlight: (chunks) => <span className="text-purple-500">{chunks}</span>,
+            })}
           </h2>
 
           <p
@@ -90,9 +93,7 @@ export default function CTA() {
                 : undefined
             }
           >
-            From the bustling streets of Lagos to the quiet corners of your
-            neighborhood, discover and share what&apos;s happening right now.
-            Your community is waiting.
+            {t('cta.body')}
           </p>
           <div
             className="cta-content mt-8"
@@ -110,7 +111,7 @@ export default function CTA() {
               href="/map"
               className="inline-flex items-center justify-center px-8 py-3 text-lg font-semibold text-black transition-all duration-300 bg-purple-950 rounded-lg hover:bg-purple-900 hover:scale-105"
             >
-              <span className="text-purple-200"> Explore the Live Map</span>{' '}
+              <span className="text-purple-200">{t('cta.button')}</span>{' '}
               <ArrowRight className="w-5 h-5 ml-2 text-purple-200" />
             </Link>
           </div>
