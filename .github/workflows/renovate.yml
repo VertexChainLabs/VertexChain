@@ -64,7 +64,7 @@ jobs:
     steps:
       # ── 1. Checkout ────────────────────────────────────────────────────────
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # A full clone is not needed; Renovate fetches what it needs via the
           # GitHub API.  A shallow fetch keeps this step fast.
@@ -72,7 +72,7 @@ jobs:
 
       # ── 2. Run Renovate ────────────────────────────────────────────────────
       - name: Run Renovate
-        uses: renovatebot/github-action@v41
+        uses: renovatebot/github-action@v46.2.0
         env:
           # ── Required ───────────────────────────────────────────────────────
           # RENOVATE_TOKEN must have Contents + Pull-requests write access.
