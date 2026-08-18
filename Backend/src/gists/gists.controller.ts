@@ -13,7 +13,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
-import { ApiBody, ApiOperation, ApiTags, ApiParam, ApiResponse } from '@nestjs/swagger';
+import { ApiBody, ApiHeader, ApiOperation, ApiTags, ApiParam, ApiResponse } from '@nestjs/swagger';
 import { GistsService } from './gists.service';
 import { CreateGistDto } from './dto/create-gist.dto';
 import { QueryGistsDto } from './dto/query-gists.dto';
@@ -86,14 +86,35 @@ export class GistsController {
   }
 
   @Patch(':id')
+  @UseGuards(StellarAuthGuard)
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({
-    summary: 'Correct a gist within its 60s edit window (same author only)',
+    summary: 'Correct a gist within its 60s edit window (signed author only)',
   })
   @ApiParam({ name: 'id', description: 'Gist UUID' })
-  @ApiResponse({ status: 403, description: 'Caller is not the original author' })
+  @ApiHeader({
+    name: 'X-Stellar-Address',
+    required: true,
+    description: "Editor's Stellar public key (G...)",
+  })
+  @ApiHeader({
+    name: 'X-Stellar-Signature',
+    required: true,
+    description: 'Ed25519 signature (hex) over `<timestamp>.<sha256(canonical body)>`',
+  })
+  @ApiHeader({
+    name: 'X-Stellar-Timestamp',
+    required: true,
+    description: 'Unix seconds; must be within the replay window',
+  })
+  @ApiResponse({ status: 401, description: 'Missing or invalid Stellar signature headers' })
+  @ApiResponse({ status: 403, description: 'Signed address is not the original author' })
   @ApiResponse({ status: 410, description: 'Edit window has closed' })
-  update(@Param('id') id: string, @Body() dto: UpdateGistDto) {
-    return this.gistsService.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateGistDto,
+    @StellarVerifiedUser() stellarVerified: StellarVerified | null,
+  ) {
+    return this.gistsService.update(id, dto, stellarVerified);
   }
 }

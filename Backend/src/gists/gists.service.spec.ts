@@ -14,8 +14,10 @@ import { UpdateGistDto } from './dto/update-gist.dto';
 import {
   ForbiddenException,
   NotFoundException,
+  UnauthorizedException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { StellarVerified } from '../auth/interfaces/stellar-verified.interface';
 
 jest.mock('../common/utils/sanitize', () => ({
   stripHtml: jest.fn((text: string) => text),
@@ -135,8 +137,9 @@ describe('GistsService', () => {
         expect.objectContaining({ content: 'First', location_cell: 'cell-1' }),
         expect.objectContaining({ content: 'Second', location_cell: 'cell-2' }),
       ]);
-      expect(sorobanService.postGist).toHaveBeenNthCalledWith(1, 'cell-1', 'cid-1', undefined);
-      expect(sorobanService.postGist).toHaveBeenNthCalledWith(2, 'cell-2', 'cid-2', 'GABC');
+      // An unsigned `author` body field is ignored: both items are anonymous.
+      expect(sorobanService.postGist).toHaveBeenNthCalledWith(1, 'cell-1', 'cid-1', null);
+      expect(sorobanService.postGist).toHaveBeenNthCalledWith(2, 'cell-2', 'cid-2', null);
     });
   });
 
@@ -174,7 +177,7 @@ describe('GistsService', () => {
       );
     });
 
-    it('calls SorobanService.postGist with locationCell, cid, and author', async () => {
+    it('ignores an unsigned author body field and posts anonymously', async () => {
       const dto: CreateGistDto = { content: 'Test', lat: 9.0579, lon: 7.4951, author: 'GABC' };
       geoService.encode.mockReturnValue('s1t7d8c');
       ipfsService.pinJson.mockResolvedValue({ cid: 'mock_Qmabc', mock: true });
@@ -184,7 +187,7 @@ describe('GistsService', () => {
 
       await service.create(dto);
 
-      expect(sorobanService.postGist).toHaveBeenCalledWith('s1t7d8c', 'mock_Qmabc', 'GABC');
+      expect(sorobanService.postGist).toHaveBeenCalledWith('s1t7d8c', 'mock_Qmabc', null);
     });
 
     it('calls GistRepository.createCommitted with all required fields', async () => {
@@ -411,7 +414,7 @@ describe('GistsService', () => {
       geoService.encode.mockReturnValue('s1t7d8c');
       ipfsService.pinJson.mockResolvedValue({ cid: 'mock_Qmabc', mock: true });
       sorobanService.postGist.mockResolvedValue({ gistId: '1', txHash: 'tx1', mock: true });
-      gistRepository.create.mockResolvedValue(mockGist());
+      gistRepository.createCommitted.mockResolvedValue(mockGist());
       cacheService.delPattern.mockResolvedValue();
 
       await service.create({ content: 'Test', lat, lon });
@@ -460,29 +463,49 @@ describe('GistsService', () => {
   });
 
   describe('update()', () => {
-    const dto: UpdateGistDto = { content: 'Fixed typo', author: 'GABC' };
+    const dto: UpdateGistDto = { content: 'Fixed typo' };
+    const verified = (address: string): StellarVerified => ({
+      address,
+      verifiedAt: new Date(),
+    });
 
     it('throws NotFoundException when gist does not exist', async () => {
       gistRepository.findByGistId.mockResolvedValue(null);
 
-      await expect(service.update('missing', dto)).rejects.toThrow(NotFoundException);
+      await expect(service.update('missing', dto, verified('GABC'))).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('throws 410 Gone when the 60s edit window has closed', async () => {
       const gist = mockGist({ created_at: new Date(Date.now() - 61_000) });
       gistRepository.findByGistId.mockResolvedValue(gist);
 
-      await expect(service.update('uuid-1', dto)).rejects.toMatchObject({
+      await expect(service.update('uuid-1', dto, verified('GABC'))).rejects.toMatchObject({
         status: 410,
       });
       expect(gistRepository.update).not.toHaveBeenCalled();
     });
 
-    it('throws ForbiddenException when author does not match', async () => {
+    it('throws UnauthorizedException when the signature is absent', async () => {
+      // Spoofing scenario: the body author matches the stored author, but there
+      // is no verified signature, so the edit must be rejected.
+      const gist = mockGist({ created_at: new Date(), author: 'GABC' });
+      gistRepository.findByGistId.mockResolvedValue(gist);
+
+      await expect(service.update('uuid-1', { ...dto, author: 'GABC' }, null)).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(gistRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('throws ForbiddenException when the signed address does not match', async () => {
       const gist = mockGist({ created_at: new Date(), author: 'GOTHER' });
       gistRepository.findByGistId.mockResolvedValue(gist);
 
-      await expect(service.update('uuid-1', dto)).rejects.toThrow(ForbiddenException);
+      await expect(service.update('uuid-1', dto, verified('GABC'))).rejects.toThrow(
+        ForbiddenException,
+      );
       expect(gistRepository.update).not.toHaveBeenCalled();
     });
 
@@ -490,7 +513,9 @@ describe('GistsService', () => {
       const gist = mockGist({ created_at: new Date(), author: null });
       gistRepository.findByGistId.mockResolvedValue(gist);
 
-      await expect(service.update('uuid-1', dto)).rejects.toThrow(ForbiddenException);
+      await expect(service.update('uuid-1', dto, verified('GABC'))).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('records lineage from the previous content_hash to a new cid', async () => {
@@ -501,7 +526,7 @@ describe('GistsService', () => {
       cacheService.del.mockResolvedValue();
       cacheService.delPattern.mockResolvedValue();
 
-      await service.update('uuid-1', dto);
+      await service.update('uuid-1', dto, verified('GABC'));
 
       expect(gistRepository.update).toHaveBeenCalledWith(
         'uuid-1',
@@ -521,7 +546,7 @@ describe('GistsService', () => {
       cacheService.del.mockResolvedValue();
       cacheService.delPattern.mockResolvedValue();
 
-      await service.update('uuid-1', dto);
+      await service.update('uuid-1', dto, verified('GABC'));
 
       expect(cacheService.del).toHaveBeenCalledWith('gist:one:uuid-1');
       expect(cacheService.delPattern).toHaveBeenCalled();
@@ -536,7 +561,7 @@ describe('GistsService', () => {
       cacheService.del.mockResolvedValue();
       cacheService.delPattern.mockResolvedValue();
 
-      const result = await service.update('uuid-1', dto);
+      const result = await service.update('uuid-1', dto, verified('GABC'));
 
       expect(result).toBe(updated);
     });

@@ -166,7 +166,7 @@ Content-Type: application/json
 }
 ```
 
-`authorAddress` is optional — anonymous posting is fully supported.
+Posting is fully anonymous by default: a gist's `author` is set only from a verified Stellar signature (`X-Stellar-Address` / `X-Stellar-Signature` / `X-Stellar-Timestamp` headers, as in `PATCH /gists/:id`). An unsigned `author` body field is ignored, so a gist cannot be attributed to an address the caller does not control.
 
 **Idempotency.** Send an `Idempotency-Key` header (any unique string, e.g. a UUID) on every post. The server records a durable write attempt *before* the irreversible on-chain call and replays it on retry, so a client that retries after a mid-write failure gets the original gist instead of a second on-chain record. If the header is omitted, the server derives a deterministic key from the request content, so identical retries still deduplicate. Reusing a key with a *different* body returns `422`.
 
@@ -184,19 +184,28 @@ Content-Type: application/json
 ```
 PATCH /gists/{id}
 Content-Type: application/json
+X-Stellar-Address: GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+X-Stellar-Signature: <64-byte Ed25519 signature, hex>
+X-Stellar-Timestamp: <unix seconds>
 ```
 
 ```json
 {
-  "content": "Great street food here tonight (fixed typo)",
-  "author": "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+  "content": "Great street food here tonight (fixed typo)"
 }
 ```
 
+Editing now requires a Stellar signature that covers the request body. The
+`X-Stellar-Signature` header is an Ed25519 signature over
+`<timestamp>.<sha256(canonical body)>`, verified against the
+`X-Stellar-Address` public key. The body `author` field is deprecated and ignored —
+authorship comes only from the verified signature.
+
 Lets an author fix a typo shortly after posting — but only shortly after:
 
+- **Signature-gated.** Missing or invalid `X-Stellar-*` headers return `401 Unauthorized`.
 - **60-second edit window.** Measured from the gist's `created_at`. Once elapsed, the endpoint returns `410 Gone` and the content is permanent.
-- **Author-gated.** `author` must match the gist's stored author exactly, or the endpoint returns `403 Forbidden`. Gists posted without an author (fully anonymous) can never be edited — there's no identity to verify against.
+- **Author-gated.** The verified address must match the gist's stored author exactly, or the endpoint returns `403 Forbidden`. Gists posted without a verified signature are stored with `author = null` and can never be edited — there's no identity to verify against.
 - **Lineage preserved.** The prior IPFS CID is kept in `previous_cid` and the new content is re-pinned to IPFS, producing a fresh `content_hash`. Nothing is deleted — the edit is an append, not an overwrite of history.
 
 ---

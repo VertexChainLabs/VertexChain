@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, MaxLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdateGistDto {
   @ApiProperty({
@@ -11,11 +11,13 @@ export class UpdateGistDto {
   @MaxLength(280)
   content: string;
 
-  @ApiProperty({
-    description: "Stellar address of the gist's original author; must match the stored author",
+  @ApiPropertyOptional({
+    description:
+      'Deprecated: the author is now derived from the X-Stellar-* signature headers. This field is accepted for compatibility but ignored.',
     example: 'GABC...XYZ',
   })
+  @IsOptional()
   @IsString()
   @MaxLength(80)
-  author: string;
+  author?: string;
 }
