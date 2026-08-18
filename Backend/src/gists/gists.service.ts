@@ -5,11 +5,14 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { CreateGistDto } from './dto/create-gist.dto';
 import { QueryGistsDto } from './dto/query-gists.dto';
 import { UpdateGistDto } from './dto/update-gist.dto';
 import { GistRepository } from './gist.repository';
+import { GistWriteAttempt, GistWriteAttemptRepository } from './gist-write-attempt.repository';
+import { computeGistRequestHash } from './idempotency-key.util';
 import { GeoService } from '../geo/geo.service';
 import { IpfsService } from '../ipfs/ipfs.service';
 import { SorobanService } from '../soroban/soroban.service';
@@ -27,18 +30,47 @@ export class GistsService {
 
   constructor(
     private readonly gistRepository: GistRepository,
+    private readonly writeAttemptRepository: GistWriteAttemptRepository,
     private readonly geoService: GeoService,
     private readonly ipfsService: IpfsService,
     private readonly sorobanService: SorobanService,
     private readonly cacheService: CacheService,
   ) {}
 
-  async create(dto: CreateGistDto, stellarVerified?: StellarVerified | null): Promise<Gist> {
+  async create(
+    dto: CreateGistDto,
+    stellarVerified?: StellarVerified | null,
+    idempotencyKey?: string,
+  ): Promise<Gist> {
     // Issue 87 — sanitize content before storing
     const content = stripHtml(dto.content);
 
     const locationCell = this.geoService.encode(dto.lat, dto.lon);
+    const author = stellarVerified ? stellarVerified.address : dto.author;
+    const authorVerifiedAt = stellarVerified ? stellarVerified.verifiedAt : null;
 
+    const requestHash = computeGistRequestHash({
+      content,
+      lat: dto.lat,
+      lon: dto.lon,
+      author,
+    });
+    const key = idempotencyKey ?? requestHash;
+
+    // 1. Resume any prior attempt for the same logical post instead of
+    //    re-pinning and re-posting to the chain.
+    const existing = await this.writeAttemptRepository.findByKey(key);
+    if (existing) {
+      if (existing.request_hash !== requestHash) {
+        throw new UnprocessableEntityException(
+          'Idempotency-Key already used with a different request',
+        );
+      }
+      return this.resumeAttempt(existing);
+    }
+
+    // 2. Pin content to IPFS. Content-addressed, so retrying produces the same
+    //    CID — this step is naturally idempotent.
     const { cid } = await this.ipfsService.pinJson({
       content,
       lat: dto.lat,
@@ -47,30 +79,146 @@ export class GistsService {
       created_at: new Date().toISOString(),
     });
 
-    const author = stellarVerified ? stellarVerified.address : dto.author;
-    const { gistId, txHash } = await this.sorobanService.postGist(locationCell, cid, author);
-
-    this.logger.log(`Gist posted → cell=${locationCell} cid=${cid} gistId=${gistId}`);
-
-    const gist = await this.gistRepository.create({
+    // 3. Durable pending record BEFORE the irreversible on-chain write.
+    const created = await this.writeAttemptRepository.createPending({
+      idempotency_key: key,
+      request_hash: requestHash,
       content,
       lat: dto.lat,
       lon: dto.lon,
       location_cell: locationCell,
       content_hash: cid,
-      stellar_gist_id: gistId,
-      tx_hash: txHash,
-      author,
-      author_verified_at: stellarVerified ? stellarVerified.verifiedAt : null,
+      author: author ?? null,
+      author_verified_at: authorVerifiedAt,
     });
 
+    const pending = created ?? (await this.writeAttemptRepository.findByKey(key));
+    if (pending && pending.status !== 'pending') {
+      // Lost a race — another request already advanced this attempt. Resume it.
+      return this.resumeAttempt(pending);
+    }
+
+    // 4. Irreversible on-chain write.
+    const { gistId, txHash } = await this.sorobanService.postGist(locationCell, cid, author);
+
+    this.logger.log(`Gist posted → cell=${locationCell} cid=${cid} gistId=${gistId}`);
+
+    // 5. Durable record of the chain result, kept separate from the final DB
+    //    insert so a failure between them does not lose the on-chain id.
+    const chained = await this.writeAttemptRepository.markChained(key, gistId, txHash);
+    if (chained === null) {
+      // Another request advanced (or removed) this attempt while we were on
+      // the chain. Re-read and resume instead of re-inserting blindly.
+      const attempt = await this.writeAttemptRepository.findByKey(key);
+      if (attempt) {
+        return this.resumeAttempt(attempt);
+      }
+    }
+
+    return this.persistAndCommit(
+      {
+        idempotency_key: key,
+        content,
+        lat: dto.lat,
+        lon: dto.lon,
+        location_cell: locationCell,
+        content_hash: cid,
+        author: author ?? null,
+        author_verified_at: authorVerifiedAt,
+      },
+      gistId,
+      txHash,
+    );
+  }
+
+  /**
+   * Finishes a prior attempt without re-posting to the chain.
+   *
+   * - `committed` → return the already-persisted gist.
+   * - `chained`   → the chain write already happened; only the DB insert remains.
+   * - `pending`   → no durable evidence the chain write happened, so it is re-submitted.
+   */
+  private async resumeAttempt(attempt: GistWriteAttempt): Promise<Gist> {
+    if (attempt.status === 'committed') {
+      if (attempt.gist_id) {
+        const gist = await this.gistRepository.findByGistId(attempt.gist_id);
+        if (gist) {
+          return gist;
+        }
+      }
+      // `committed` implies the gists row exists; if it was pruned, fall through
+      // to the idempotent insert rather than minting a second on-chain gist.
+      return this.finishChained(attempt);
+    }
+
+    if (attempt.status === 'chained') {
+      return this.finishChained(attempt);
+    }
+
+    // 'pending' — resume from the already-pinned CID.
+    const locationCell = attempt.location_cell ?? this.geoService.encode(attempt.lat, attempt.lon);
+    const { gistId, txHash } = await this.sorobanService.postGist(
+      locationCell,
+      attempt.content_hash ?? '',
+      attempt.author ?? undefined,
+    );
+
+    this.logger.log(
+      `Gist re-posted (pending resume) → cell=${locationCell} cid=${attempt.content_hash} gistId=${gistId}`,
+    );
+
+    await this.writeAttemptRepository.markChained(attempt.idempotency_key, gistId, txHash);
+    return this.persistAndCommit(attempt, gistId, txHash);
+  }
+
+  private async finishChained(attempt: GistWriteAttempt): Promise<Gist> {
+    if (!attempt.stellar_gist_id) {
+      throw new Error(
+        `gist_write_attempt ${attempt.id} is ${attempt.status} but has no stellar_gist_id`,
+      );
+    }
+    return this.persistAndCommit(attempt, attempt.stellar_gist_id, attempt.tx_hash ?? '');
+  }
+
+  private async persistAndCommit(
+    attempt: Pick<
+      GistWriteAttempt,
+      | 'idempotency_key'
+      | 'content'
+      | 'lat'
+      | 'lon'
+      | 'location_cell'
+      | 'content_hash'
+      | 'author'
+      | 'author_verified_at'
+    >,
+    gistId: string,
+    txHash: string,
+  ): Promise<Gist> {
+    const gist = await this.gistRepository.createCommitted({
+      content: attempt.content,
+      lat: attempt.lat,
+      lon: attempt.lon,
+      location_cell: attempt.location_cell ?? undefined,
+      content_hash: attempt.content_hash ?? undefined,
+      stellar_gist_id: gistId,
+      tx_hash: txHash,
+      author: attempt.author ?? undefined,
+      author_verified_at: attempt.author_verified_at ?? null,
+    });
+
+    await this.writeAttemptRepository.markCommitted(attempt.idempotency_key, gist.id);
+
     // Invalidate nearby cache for the affected area
-    await this.invalidateNearbyCache(dto.lat, dto.lon);
+    await this.invalidateNearbyCache(attempt.lat, attempt.lon);
 
     return gist;
   }
 
-  async createBatch(dtos: CreateGistDto[], stellarVerified?: StellarVerified | null): Promise<Gist[]> {
+  async createBatch(
+    dtos: CreateGistDto[],
+    stellarVerified?: StellarVerified | null,
+  ): Promise<Gist[]> {
     const createdAt = new Date().toISOString();
     const author = stellarVerified ? stellarVerified.address : undefined;
     const authorVerifiedAt = stellarVerified ? stellarVerified.verifiedAt : null;

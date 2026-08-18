@@ -106,8 +106,23 @@ describe('GistsController', () => {
 
       const response = await controller.create(dto, null);
 
-      expect(service.create).toHaveBeenCalledWith(dto, null);
+      expect(service.create).toHaveBeenCalledWith(dto, null, undefined);
       expect(response).toEqual(result);
+    });
+
+    it('should forward the Idempotency-Key header to the service', async () => {
+      const dto: CreateGistDto = {
+        content: 'Great coffee spot here!',
+        lat: 9.0579,
+        lon: 7.4951,
+      };
+      const result = createMockGist({ content: dto.content });
+
+      jest.spyOn(service, 'create').mockResolvedValueOnce(result);
+
+      await controller.create(dto, null, 'key-123');
+
+      expect(service.create).toHaveBeenCalledWith(dto, null, 'key-123');
     });
 
     it('should call gistsService.create without optional author field', async () => {
@@ -122,7 +137,7 @@ describe('GistsController', () => {
 
       const response = await controller.create(dto, null);
 
-      expect(service.create).toHaveBeenCalledWith(dto, null);
+      expect(service.create).toHaveBeenCalledWith(dto, null, undefined);
       expect(response).toEqual(result);
     });
 

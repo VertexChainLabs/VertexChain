@@ -168,13 +168,16 @@ Content-Type: application/json
 
 `authorAddress` is optional — anonymous posting is fully supported.
 
+**Idempotency.** Send an `Idempotency-Key` header (any unique string, e.g. a UUID) on every post. The server records a durable write attempt *before* the irreversible on-chain call and replays it on retry, so a client that retries after a mid-write failure gets the original gist instead of a second on-chain record. If the header is omitted, the server derives a deterministic key from the request content, so identical retries still deduplicate. Reusing a key with a *different* body returns `422`.
+
 **What happens internally:**
 1. Validate + sanitise input
 2. Pin content to IPFS → receive CID
 3. Derive `locationCell` from `(lat, lon)` via geohash
-4. Submit `post_gist(author, locationCell, contentHash)` to Soroban
-5. Persist the record in Postgres
-6. Return the created gist
+4. Persist a `pending` write attempt (keyed by the idempotency key) in Postgres
+5. Submit `post_gist(author, locationCell, contentHash)` to Soroban
+6. Record the on-chain `gistId`/`txHash` (`chained`) and insert the `gists` row (`committed`)
+7. Return the created gist
 
 ### Correct a Gist
 
@@ -217,6 +220,21 @@ Table: `gists`
 | `created_at` | `timestamptz` | |
 | `previous_cid` | `text` | Nullable — IPFS CID this gist replaced, set on edit |
 | `edited_at` | `timestamptz` | Nullable — set on edit |
+
+### Idempotency ledger (`gist_write_attempts`)
+
+A separate table, one row per logical post attempt, keyed by `idempotency_key` (unique). It carries the write-path state machine:
+
+| Column | Type | Notes |
+|---|---|---|
+| `idempotency_key` | `varchar(255)` UNIQUE | Client header value, or a content-derived fallback |
+| `request_hash` | `varchar(64)` | Detects key reuse with a different body (`422`) |
+| `content_hash` | `varchar(100)` | IPFS CID pinned for this attempt |
+| `stellar_gist_id` / `tx_hash` | `varchar(80)` | Filled once the on-chain write completes (`chained`) |
+| `gist_id` | `uuid` | The persisted `gists.id`, set on `committed` |
+| `status` | `varchar(16)` | `pending` → `chained` → `committed` |
+
+`stellar_gist_id` is enforced unique on `gists` so the final insert and the indexer's `upsertFromEvent` both dedupe at the DB layer.
 
 ---
 

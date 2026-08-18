@@ -74,10 +74,88 @@ export class GistRepository {
         ST_X(location::geometry) AS lon,
         ST_Y(location::geometry) AS lat
       `,
-      [content, lon, lat, location_cell, content_hash, stellar_gist_id, tx_hash, author, author_verified_at],
+      [
+        content,
+        lon,
+        lat,
+        location_cell,
+        content_hash,
+        stellar_gist_id,
+        tx_hash,
+        author,
+        author_verified_at,
+      ],
     );
 
     return result[0];
+  }
+
+  /**
+   * Idempotent insert keyed on the on-chain gist id.
+   *
+   * Used by the write path after the Soroban call has produced `stellar_gist_id`.
+   * If a prior attempt already persisted this gist (a retry after a mid-write
+   * failure), the conflicting row is returned instead of inserting a duplicate.
+   * Requires the `UQ_gists_stellar_gist_id` unique index added by the
+   * `AddGistWriteAttempts1700000000004` migration.
+   */
+  async createCommitted(data: CreateGistData): Promise<Gist> {
+    const {
+      content,
+      lat,
+      lon,
+      location_cell = null,
+      content_hash = null,
+      stellar_gist_id = null,
+      tx_hash = null,
+      author = null,
+      author_verified_at = null,
+    } = data;
+
+    const inserted = await this.dataSource.query<Gist[]>(
+      `
+      INSERT INTO gists (
+        content, location, location_cell,
+        content_hash, stellar_gist_id, tx_hash, author, author_verified_at
+      )
+      VALUES (
+        $1,
+        ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography,
+        $4, $5, $6, $7, $8, $9
+      )
+      ON CONFLICT (stellar_gist_id) DO NOTHING
+      RETURNING
+        id, content, location_cell, content_hash,
+        stellar_gist_id, tx_hash, author, author_verified_at, previous_cid, edited_at, created_at,
+        ST_X(location::geometry) AS lon,
+        ST_Y(location::geometry) AS lat
+      `,
+      [
+        content,
+        lon,
+        lat,
+        location_cell,
+        content_hash,
+        stellar_gist_id,
+        tx_hash,
+        author,
+        author_verified_at,
+      ],
+    );
+
+    if (inserted[0]) {
+      return inserted[0];
+    }
+
+    // Conflict — the gist was already persisted by a prior attempt.
+    const existing = await this.findByStellarGistId(stellar_gist_id as string);
+    if (existing) {
+      return existing;
+    }
+
+    throw new Error(
+      `createCommitted: insert conflicted on stellar_gist_id=${stellar_gist_id} but the row could not be re-read`,
+    );
   }
 
   async findNearby(query: NearbyQuery): Promise<PaginatedResponse<Gist>> {

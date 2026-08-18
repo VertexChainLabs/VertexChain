@@ -38,6 +38,31 @@ describe('postGist', () => {
     expect(options.headers['Content-Type']).toBe('application/json');
   });
 
+  it('should send an Idempotency-Key header on every post', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(mockResponse),
+    });
+
+    await postGist(validPayload);
+
+    const [, options] = mockFetch.mock.calls[0];
+    expect(typeof options.headers['Idempotency-Key']).toBe('string');
+    expect(options.headers['Idempotency-Key'].length).toBeGreaterThan(0);
+  });
+
+  it('should reuse a caller-supplied idempotency key', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(mockResponse),
+    });
+
+    await postGist(validPayload, { idempotencyKey: 'key-123' });
+
+    const [, options] = mockFetch.mock.calls[0];
+    expect(options.headers['Idempotency-Key']).toBe('key-123');
+  });
+
   it('should return the server-confirmed gist on success', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
