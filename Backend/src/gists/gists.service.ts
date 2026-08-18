@@ -21,6 +21,21 @@ import { StellarVerified } from '../auth/interfaces/stellar-verified.interface';
 
 const EDIT_WINDOW_MS = 60_000;
 
+/**
+ * Shared prefix for nearby-cache keys. Both the cache key written by
+ * `findNearby` and the invalidation pattern used by `invalidateNearbyCache`
+ * must derive from the same coordinate serialization; otherwise a rounded
+ * pattern misses the full-precision keys the query actually writes.
+ */
+function nearbyCachePrefix(lat: number, lon: number): string {
+  return `gist:nearby:${lat}:${lon}`;
+}
+
+/** Full cache key for an uncursor'd nearby query. */
+function nearbyCacheKey(lat: number, lon: number, radius?: number, limit?: number): string {
+  return `${nearbyCachePrefix(lat, lon)}:${radius || 500}:${limit || 20}`;
+}
+
 @Injectable()
 export class GistsService {
   private readonly logger = new Logger(GistsService.name);
@@ -142,7 +157,7 @@ export class GistsService {
       });
     }
 
-    const cacheKey = `gist:nearby:${query.lat}:${query.lon}:${query.radius || 500}:${query.limit || 20}`;
+    const cacheKey = nearbyCacheKey(query.lat, query.lon, query.radius, query.limit);
     const cached = await this.cacheService.get<PaginatedResponse<Gist>>(cacheKey);
 
     if (cached) {
@@ -227,9 +242,9 @@ export class GistsService {
   }
 
   private async invalidateNearbyCache(lat: number, lon: number): Promise<void> {
-    // Invalidate all nearby cache keys for this area
-    // We use a pattern to match all nearby queries
-    const pattern = `gist:nearby:${lat.toFixed(4)}:${lon.toFixed(4)}:*`;
+    // Invalidate every radius/limit variant for this coordinate, using the
+    // same coordinate serialization findNearby uses for its cache keys.
+    const pattern = `${nearbyCachePrefix(lat, lon)}:*`;
     await this.cacheService.delPattern(pattern);
     this.logger.debug(`Invalidated nearby cache pattern: ${pattern}`);
   }

@@ -245,6 +245,40 @@ describe('GistsService', () => {
     });
   });
 
+  describe('nearby cache invalidation', () => {
+    it('invalidates with the same full-precision coordinates findNearby caches with', async () => {
+      const lat = 9.0579123;
+      const lon = 7.4951567;
+      const paginatedResult = {
+        data: [mockGist()],
+        pagination: { count: 1, cursor: null, hasMore: false },
+      };
+
+      // Capture the cache key findNearby would write for a query at this coordinate.
+      cacheService.get.mockResolvedValue(null);
+      cacheService.set.mockResolvedValue();
+      gistRepository.findNearby.mockResolvedValue(paginatedResult);
+      await service.findNearby({ lat, lon, radius: 500, limit: 20 });
+      const cacheKey = cacheService.set.mock.calls[0][0] as string;
+
+      // Post a gist at the same coordinate and capture the invalidation pattern.
+      geoService.encode.mockReturnValue('s1t7d8c');
+      ipfsService.pinJson.mockResolvedValue({ cid: 'mock_Qmabc', mock: true });
+      sorobanService.postGist.mockResolvedValue({ gistId: '1', txHash: 'tx1', mock: true });
+      gistRepository.create.mockResolvedValue(mockGist());
+      cacheService.delPattern.mockResolvedValue();
+
+      await service.create({ content: 'Test', lat, lon });
+
+      const pattern = cacheService.delPattern.mock.calls[0][0] as string;
+
+      // The pattern uses the raw (unrounded) coordinates and its `*` suffix
+      // matches the key findNearby actually wrote.
+      expect(pattern).toBe(`gist:nearby:${lat}:${lon}:*`);
+      expect(cacheKey.startsWith(pattern.slice(0, -1))).toBe(true);
+    });
+  });
+
   describe('findOne()', () => {
     it('returns cached gist on cache hit', async () => {
       const gist = mockGist();
