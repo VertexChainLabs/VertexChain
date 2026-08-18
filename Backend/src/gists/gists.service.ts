@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  UnauthorizedException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { CreateGistDto } from './dto/create-gist.dto';
@@ -61,7 +62,11 @@ export class GistsService {
     const content = stripHtml(dto.content);
 
     const locationCell = this.geoService.encode(dto.lat, dto.lon);
-    const author = stellarVerified ? stellarVerified.address : dto.author;
+
+    // Authorship comes only from a verified Stellar signature. An unsigned
+    // `dto.author` field is ignored so a client cannot attribute a gist to an
+    // arbitrary address.
+    const author = stellarVerified ? stellarVerified.address : null;
     const authorVerifiedAt = stellarVerified ? stellarVerified.verifiedAt : null;
 
     const requestHash = computeGistRequestHash({
@@ -235,7 +240,9 @@ export class GistsService {
     stellarVerified?: StellarVerified | null,
   ): Promise<Gist[]> {
     const createdAt = new Date().toISOString();
-    const author = stellarVerified ? stellarVerified.address : undefined;
+    // Authorship comes only from a verified Stellar signature; per-item
+    // `dto.author` fields are ignored.
+    const author = stellarVerified ? stellarVerified.address : null;
     const authorVerifiedAt = stellarVerified ? stellarVerified.verifiedAt : null;
 
     const prepared = dtos.map((dto) => {
@@ -246,7 +253,7 @@ export class GistsService {
         dto,
         content,
         locationCell,
-        effectiveAuthor: author ?? dto.author,
+        effectiveAuthor: author,
         payload: {
           content,
           lat: dto.lat,
@@ -348,7 +355,11 @@ export class GistsService {
     return result;
   }
 
-  async update(id: string, dto: UpdateGistDto): Promise<Gist> {
+  async update(
+    id: string,
+    dto: UpdateGistDto,
+    stellarVerified?: StellarVerified | null,
+  ): Promise<Gist> {
     const gist = await this.gistRepository.findByGistId(id);
 
     if (!gist) {
@@ -360,7 +371,13 @@ export class GistsService {
       throw new HttpException('Edit window has closed for this gist', HttpStatus.GONE);
     }
 
-    if (!gist.author || gist.author !== dto.author) {
+    // Authorship is derived from the verified Stellar signature, never the
+    // caller-supplied `dto.author` string (which is trivially spoofable).
+    const verifiedAddress = stellarVerified?.address ?? null;
+    if (!verifiedAddress) {
+      throw new UnauthorizedException('A valid Stellar signature is required to edit a gist');
+    }
+    if (!gist.author || gist.author !== verifiedAddress) {
       throw new ForbiddenException('Only the original author may edit this gist');
     }
 
