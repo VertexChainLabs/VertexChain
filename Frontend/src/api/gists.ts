@@ -51,6 +51,76 @@ function generateIdempotencyKey(): string {
 }
 
 /**
+ * Memoized in-flight promise for the CSRF token. The backend uses a
+ * double-submit cookie: `GET /csrf-token` sets the httpOnly `csrfToken`
+ * cookie (the secret) and returns the token to echo back in the
+ * `x-csrf-token` header. We fetch once and reuse the token, sharing the
+ * in-flight promise so concurrent posts trigger a single fetch.
+ */
+let csrfTokenPromise: Promise<string> | null = null;
+
+/**
+ * Fetch a fresh CSRF token from `/csrf-token`. `credentials: 'include'` is
+ * required so the httpOnly secret cookie is set and later replayed.
+ */
+async function fetchCsrfToken(): Promise<string> {
+  const res = await fetch(`${BASE_URL}/csrf-token`, {
+    method: "GET",
+    credentials: "include",
+  });
+
+  if (!res.ok) {
+    let body: string;
+    try {
+      body = await res.text();
+    } catch {
+      body = "Unable to read response body";
+    }
+    throw new GistApiError(
+      `GET /csrf-token failed (${res.status}): ${body}`,
+      res.status,
+    );
+  }
+
+  const json = (await res.json()) as { csrfToken?: string };
+  if (!json.csrfToken) {
+    throw new GistApiError("GET /csrf-token returned no token");
+  }
+  return json.csrfToken;
+}
+
+/** Return the memoized CSRF token, fetching it on first use. */
+function ensureCsrfToken(): Promise<string> {
+  if (!csrfTokenPromise) {
+    csrfTokenPromise = fetchCsrfToken();
+  }
+  return csrfTokenPromise;
+}
+
+/** Drop the memoized token so the next call fetches a fresh one. */
+function invalidateCsrfToken(): void {
+  csrfTokenPromise = null;
+}
+
+/** POST the payload with the CSRF token, idempotency key, and credentialed fetch. */
+async function postGistRequest(
+  payload: GistPayload,
+  token: string,
+  idempotencyKey: string,
+): Promise<Response> {
+  return fetch(`${BASE_URL}/gists`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "x-csrf-token": token,
+      "Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
  * POST a new gist to the backend.
  *
  * Returns the server-confirmed gist on success.
@@ -60,17 +130,18 @@ export async function postGist(
   payload: GistPayload,
   options: PostGistOptions = {},
 ): Promise<GistResponse> {
-  const url = `${BASE_URL}/gists`;
   const idempotencyKey = options.idempotencyKey ?? generateIdempotencyKey();
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Idempotency-Key": idempotencyKey,
-    },
-    body: JSON.stringify(payload),
-  });
+  let token = await ensureCsrfToken();
+  let res = await postGistRequest(payload, token, idempotencyKey);
+
+  // The backend may rotate the double-submit cookie; a 403 can mean the cached
+  // token is stale. Refetch once and retry before surfacing the error.
+  if (res.status === 403) {
+    invalidateCsrfToken();
+    token = await ensureCsrfToken();
+    res = await postGistRequest(payload, token, idempotencyKey);
+  }
 
   if (!res.ok) {
     let body: string;
