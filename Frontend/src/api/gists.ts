@@ -32,18 +32,43 @@ export class GistApiError extends Error {
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
+export interface PostGistOptions {
+  /**
+   * Stable key reused across retries of the same logical post so the backend
+   * can deduplicate a mid-write failure instead of minting a second gist.
+   */
+  idempotencyKey?: string;
+}
+
+function generateIdempotencyKey(): string {
+  const c = globalThis.crypto as { randomUUID?: () => string } | undefined;
+  if (c && typeof c.randomUUID === "function") {
+    return c.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random()
+    .toString(36)
+    .slice(2)}`;
+}
+
 /**
  * POST a new gist to the backend.
  *
  * Returns the server-confirmed gist on success.
  * Throws a {@link GistApiError} on network failure or non-2xx response.
  */
-export async function postGist(payload: GistPayload): Promise<GistResponse> {
+export async function postGist(
+  payload: GistPayload,
+  options: PostGistOptions = {},
+): Promise<GistResponse> {
   const url = `${BASE_URL}/gists`;
+  const idempotencyKey = options.idempotencyKey ?? generateIdempotencyKey();
 
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey,
+    },
     body: JSON.stringify(payload),
   });
 

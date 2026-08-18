@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Gist } from './entities/gist.entity';
 import { GistRepository } from './gist.repository';
+import { GistWriteAttemptRepository } from './gist-write-attempt.repository';
 import { GistsService } from './gists.service';
 import { GistsController } from './gists.controller';
 import { GeoModule } from '../geo/geo.module';
@@ -11,9 +12,16 @@ import { CacheModule } from '../cache/cache.module';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Gist]), GeoModule, IpfsModule, SorobanModule, CacheModule, AuthModule],
+  imports: [
+    TypeOrmModule.forFeature([Gist]),
+    GeoModule,
+    IpfsModule,
+    SorobanModule,
+    CacheModule,
+    AuthModule,
+  ],
   controllers: [GistsController],
-  providers: [GistRepository, GistsService],
+  providers: [GistRepository, GistWriteAttemptRepository, GistsService],
   exports: [GistsService],
 })
 export class GistsModule {}

@@ -3,6 +3,7 @@ import {
   BadRequestException,
   Controller,
   Get,
+  Headers,
   Post,
   Patch,
   Body,
@@ -51,8 +52,9 @@ export class GistsController {
   create(
     @Body() dto: CreateGistDto,
     @StellarVerifiedUser() stellarVerified: StellarVerified | null,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ) {
-    return this.gistsService.create(dto, stellarVerified);
+    return this.gistsService.create(dto, stellarVerified, idempotencyKey);
   }
 
   @Post('batch')

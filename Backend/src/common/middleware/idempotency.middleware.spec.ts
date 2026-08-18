@@ -34,6 +34,10 @@ describe('Idempotency-Key middleware', () => {
       res.status(200).json({ count: req.body.length });
     });
 
+    app.post('/flaky', (req, res) => {
+      res.status(500).json({ error: 'boom' });
+    });
+
     app.get('/health', (req, res) => {
       res.status(200).json({ status: 'ok' });
     });
@@ -152,5 +156,46 @@ describe('Idempotency-Key middleware', () => {
     await request(app).post('/gists').send({ content: 'no-key' }).expect(200);
 
     expect(cache.set).not.toHaveBeenCalled();
+  });
+
+  it('records a failed attempt when the handler responds with an error status', async () => {
+    cache.get.mockResolvedValue(null);
+
+    await request(app)
+      .post('/flaky')
+      .set('Idempotency-Key', 'key-fail')
+      .send({ content: 'boom' })
+      .expect(500);
+
+    expect(cache.set).toHaveBeenCalledTimes(1);
+    const setArgs = cache.set.mock.calls[0];
+    expect(setArgs[0]).toBe('idemp:key-fail');
+    expect(setArgs[1]).toMatchObject({ state: 'failed', status: 500, body: { error: 'boom' } });
+  });
+
+  it('allows a retry to proceed after a failed attempt instead of replaying the error', async () => {
+    cache.get.mockResolvedValue(null);
+
+    await request(app)
+      .post('/flaky')
+      .set('Idempotency-Key', 'key-fail')
+      .send({ content: 'boom' })
+      .expect(500);
+
+    // The first attempt recorded a failed entry.
+    const failedEntry = cache.set.mock.calls[0][1];
+    expect(failedEntry).toMatchObject({ state: 'failed', status: 500 });
+
+    // A retry of the same request reaches the handler again instead of
+    // replaying the cached 500 or returning 422.
+    cache.get.mockResolvedValue(failedEntry);
+    const res = await request(app)
+      .post('/flaky')
+      .set('Idempotency-Key', 'key-fail')
+      .send({ content: 'boom' })
+      .expect(500);
+
+    expect(res.headers['idempotency-replayed']).toBeUndefined();
+    expect(cache.set).toHaveBeenCalledTimes(2);
   });
 });

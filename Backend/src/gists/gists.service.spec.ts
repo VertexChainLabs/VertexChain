@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { GistsService } from './gists.service';
 import { GistRepository } from './gist.repository';
+import { GistWriteAttemptRepository } from './gist-write-attempt.repository';
+import { computeGistRequestHash } from './idempotency-key.util';
 import { GeoService } from '../geo/geo.service';
 import { IpfsService } from '../ipfs/ipfs.service';
 import { SorobanService } from '../soroban/soroban.service';
@@ -9,7 +11,11 @@ import { Gist } from './entities/gist.entity';
 import { CreateGistDto } from './dto/create-gist.dto';
 import { QueryGistsDto } from './dto/query-gists.dto';
 import { UpdateGistDto } from './dto/update-gist.dto';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 
 jest.mock('../common/utils/sanitize', () => ({
   stripHtml: jest.fn((text: string) => text),
@@ -36,6 +42,7 @@ const mockGist = (overrides?: Partial<Gist>): Gist => ({
 describe('GistsService', () => {
   let service: GistsService;
   let gistRepository: jest.Mocked<GistRepository>;
+  let writeAttemptRepository: jest.Mocked<GistWriteAttemptRepository>;
   let geoService: jest.Mocked<GeoService>;
   let ipfsService: jest.Mocked<IpfsService>;
   let sorobanService: jest.Mocked<SorobanService>;
@@ -49,9 +56,20 @@ describe('GistsService', () => {
           provide: GistRepository,
           useValue: {
             create: jest.fn(),
+            createCommitted: jest.fn(),
             findNearby: jest.fn(),
             findByGistId: jest.fn(),
+            findByStellarGistId: jest.fn(),
             update: jest.fn(),
+          },
+        },
+        {
+          provide: GistWriteAttemptRepository,
+          useValue: {
+            findByKey: jest.fn(),
+            createPending: jest.fn(),
+            markChained: jest.fn(),
+            markCommitted: jest.fn(),
           },
         },
         {
@@ -80,10 +98,17 @@ describe('GistsService', () => {
 
     service = module.get<GistsService>(GistsService);
     gistRepository = module.get(GistRepository);
+    writeAttemptRepository = module.get(GistWriteAttemptRepository);
     geoService = module.get(GeoService);
     ipfsService = module.get(IpfsService);
     sorobanService = module.get(SorobanService);
     cacheService = module.get(CacheService);
+
+    // Default to a clean (no prior attempt) write path.
+    writeAttemptRepository.findByKey.mockResolvedValue(null);
+    writeAttemptRepository.createPending.mockResolvedValue(null);
+    writeAttemptRepository.markChained.mockResolvedValue(null);
+    writeAttemptRepository.markCommitted.mockResolvedValue(null);
   });
 
   describe('createBatch()', () => {
@@ -121,7 +146,7 @@ describe('GistsService', () => {
       geoService.encode.mockReturnValue('s1t7d8c');
       ipfsService.pinJson.mockResolvedValue({ cid: 'mock_Qmabc', mock: true });
       sorobanService.postGist.mockResolvedValue({ gistId: '1', txHash: 'tx1', mock: true });
-      gistRepository.create.mockResolvedValue(mockGist());
+      gistRepository.createCommitted.mockResolvedValue(mockGist());
       cacheService.delPattern.mockResolvedValue();
 
       await service.create(dto);
@@ -134,7 +159,7 @@ describe('GistsService', () => {
       geoService.encode.mockReturnValue('s1t7d8c');
       ipfsService.pinJson.mockResolvedValue({ cid: 'mock_Qmabc', mock: true });
       sorobanService.postGist.mockResolvedValue({ gistId: '1', txHash: 'tx1', mock: true });
-      gistRepository.create.mockResolvedValue(mockGist());
+      gistRepository.createCommitted.mockResolvedValue(mockGist());
       cacheService.delPattern.mockResolvedValue();
 
       await service.create(dto);
@@ -154,7 +179,7 @@ describe('GistsService', () => {
       geoService.encode.mockReturnValue('s1t7d8c');
       ipfsService.pinJson.mockResolvedValue({ cid: 'mock_Qmabc', mock: true });
       sorobanService.postGist.mockResolvedValue({ gistId: '1', txHash: 'tx1', mock: true });
-      gistRepository.create.mockResolvedValue(mockGist());
+      gistRepository.createCommitted.mockResolvedValue(mockGist());
       cacheService.delPattern.mockResolvedValue();
 
       await service.create(dto);
@@ -162,17 +187,17 @@ describe('GistsService', () => {
       expect(sorobanService.postGist).toHaveBeenCalledWith('s1t7d8c', 'mock_Qmabc', 'GABC');
     });
 
-    it('calls GistRepository.create with all required fields', async () => {
+    it('calls GistRepository.createCommitted with all required fields', async () => {
       const dto: CreateGistDto = { content: 'Test', lat: 9.0579, lon: 7.4951 };
       geoService.encode.mockReturnValue('s1t7d8c');
       ipfsService.pinJson.mockResolvedValue({ cid: 'mock_Qmabc', mock: true });
       sorobanService.postGist.mockResolvedValue({ gistId: '42', txHash: 'tx42', mock: true });
-      gistRepository.create.mockResolvedValue(mockGist());
+      gistRepository.createCommitted.mockResolvedValue(mockGist());
       cacheService.delPattern.mockResolvedValue();
 
       await service.create(dto);
 
-      expect(gistRepository.create).toHaveBeenCalledWith({
+      expect(gistRepository.createCommitted).toHaveBeenCalledWith({
         content: 'Test',
         lat: 9.0579,
         lon: 7.4951,
@@ -191,12 +216,133 @@ describe('GistsService', () => {
       geoService.encode.mockReturnValue('s1t7d8c');
       ipfsService.pinJson.mockResolvedValue({ cid: 'cid1', mock: true });
       sorobanService.postGist.mockResolvedValue({ gistId: '1', txHash: 'tx', mock: true });
-      gistRepository.create.mockResolvedValue(gist);
+      gistRepository.createCommitted.mockResolvedValue(gist);
       cacheService.delPattern.mockResolvedValue();
 
       const result = await service.create(dto);
 
       expect(result).toBe(gist);
+    });
+
+    it('does not re-post to the chain when a retry follows a failed DB insert', async () => {
+      const dto: CreateGistDto = { content: 'Test', lat: 9.0579, lon: 7.4951 };
+      const idempotencyKey = 'key-retry';
+      const requestHash = computeGistRequestHash({
+        content: 'Test',
+        lat: 9.0579,
+        lon: 7.4951,
+      });
+      const chainedAttempt = {
+        id: 'attempt-1',
+        idempotency_key: idempotencyKey,
+        request_hash: requestHash,
+        content: 'Test',
+        lat: 9.0579,
+        lon: 7.4951,
+        location_cell: 's1t7d8c',
+        content_hash: 'cid-1',
+        author: null,
+        author_verified_at: null,
+        stellar_gist_id: '42',
+        tx_hash: 'tx-42',
+        gist_id: null,
+        status: 'chained' as const,
+        created_at: new Date(),
+        updated_at: new Date(),
+      };
+
+      geoService.encode.mockReturnValue('s1t7d8c');
+      ipfsService.pinJson.mockResolvedValue({ cid: 'cid-1', mock: true });
+      sorobanService.postGist.mockResolvedValue({ gistId: '42', txHash: 'tx-42', mock: true });
+      cacheService.delPattern.mockResolvedValue();
+
+      // First attempt: fresh path, then the final DB insert fails.
+      writeAttemptRepository.findByKey.mockResolvedValue(null);
+      writeAttemptRepository.markChained.mockResolvedValue(chainedAttempt);
+      gistRepository.createCommitted.mockRejectedValueOnce(
+        new Error('Postgres briefly unavailable'),
+      );
+
+      await expect(service.create(dto, null, idempotencyKey)).rejects.toThrow(
+        'Postgres briefly unavailable',
+      );
+      expect(sorobanService.postGist).toHaveBeenCalledTimes(1);
+
+      // Retry with the same key: the attempt is now 'chained', so the chain
+      // write is skipped and only the DB insert is retried.
+      writeAttemptRepository.findByKey.mockResolvedValue(chainedAttempt);
+      gistRepository.createCommitted.mockResolvedValueOnce(mockGist());
+
+      const result = await service.create(dto, null, idempotencyKey);
+
+      expect(result).toEqual(mockGist());
+      expect(sorobanService.postGist).toHaveBeenCalledTimes(1); // still once
+      expect(gistRepository.createCommitted).toHaveBeenCalledTimes(2);
+      expect(writeAttemptRepository.markCommitted).toHaveBeenCalledWith(idempotencyKey, 'uuid-1');
+    });
+
+    it('replays a committed attempt without re-posting or re-inserting', async () => {
+      const dto: CreateGistDto = { content: 'Test', lat: 9.0579, lon: 7.4951 };
+      const idempotencyKey = 'key-committed';
+      const committedAttempt = {
+        id: 'attempt-1',
+        idempotency_key: idempotencyKey,
+        request_hash: computeGistRequestHash({ content: 'Test', lat: 9.0579, lon: 7.4951 }),
+        content: 'Test',
+        lat: 9.0579,
+        lon: 7.4951,
+        location_cell: 's1t7d8c',
+        content_hash: 'cid-1',
+        author: null,
+        author_verified_at: null,
+        stellar_gist_id: '42',
+        tx_hash: 'tx-42',
+        gist_id: 'uuid-1',
+        status: 'committed' as const,
+        created_at: new Date(),
+        updated_at: new Date(),
+      };
+      const stored = mockGist();
+
+      writeAttemptRepository.findByKey.mockResolvedValue(committedAttempt);
+      gistRepository.findByGistId.mockResolvedValue(stored);
+
+      const result = await service.create(dto, null, idempotencyKey);
+
+      expect(result).toBe(stored);
+      expect(sorobanService.postGist).not.toHaveBeenCalled();
+      expect(ipfsService.pinJson).not.toHaveBeenCalled();
+      expect(gistRepository.createCommitted).not.toHaveBeenCalled();
+    });
+
+    it('rejects a reused idempotency key that maps to a different request', async () => {
+      const dto: CreateGistDto = { content: 'Test', lat: 9.0579, lon: 7.4951 };
+      const idempotencyKey = 'key-reused';
+      const priorAttempt = {
+        id: 'attempt-1',
+        idempotency_key: idempotencyKey,
+        request_hash: computeGistRequestHash({ content: 'Different', lat: 9.0579, lon: 7.4951 }),
+        content: 'Different',
+        lat: 9.0579,
+        lon: 7.4951,
+        location_cell: 's1t7d8c',
+        content_hash: 'cid-other',
+        author: null,
+        author_verified_at: null,
+        stellar_gist_id: '42',
+        tx_hash: 'tx-42',
+        gist_id: null,
+        status: 'chained' as const,
+        created_at: new Date(),
+        updated_at: new Date(),
+      };
+
+      writeAttemptRepository.findByKey.mockResolvedValue(priorAttempt);
+
+      await expect(service.create(dto, null, idempotencyKey)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+      expect(sorobanService.postGist).not.toHaveBeenCalled();
     });
   });
 
