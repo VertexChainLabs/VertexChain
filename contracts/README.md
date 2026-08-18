@@ -50,7 +50,7 @@ Location-aware gist registry for storing and retrieving gists by geographic cell
 | `created_at` | `u64` | Ledger timestamp at creation |
 
 **Methods:**
-- `post_gist(author, location_cell, content_hash)` - Register a new gist
+- `post_gist(author, location_cell, content_hash)` - Register a new gist. Anonymous posting (`author = None`) requires no auth; a non-anonymous post (`Some(address)`) requires that address to authorize the invocation (`require_auth`), so gist attribution cannot be forged.
 - `get_gist(gist_id)` - Retrieve a gist record by id
 - `list_gists_by_cell(location_cell, cursor, limit)` - Paginated list of gists within a location cell
 

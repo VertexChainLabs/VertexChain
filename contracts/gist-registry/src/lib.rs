@@ -31,12 +31,22 @@ pub struct GistRegistry;
 #[contractimpl]
 impl GistRegistry {
     /// Register a new gist on-chain. Returns the assigned gist_id.
+    ///
+    /// When `author` is `Some(address)`, that address must authorize the
+    /// invocation (`address.require_auth()`), so attribution cannot be forged
+    /// by a caller who merely passes someone else's address. `None` remains
+    /// fully anonymous and requires no auth.
     pub fn post_gist(
         env: Env,
         author: Option<Address>,
         location_cell: String,
         content_hash: String,
     ) -> u64 {
+        // A non-anonymous post must be authorized by the attributed author.
+        if let Some(a) = &author {
+            a.require_auth();
+        }
+
         let gist_id: u64 = env.storage().instance().get(&GIST_COUNT).unwrap_or(0) + 1;
 
         let gist = Gist {
@@ -95,8 +105,8 @@ impl GistRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::testutils::Ledger;
-    use soroban_sdk::{Env, String};
+    use soroban_sdk::testutils::{Address as _, Ledger};
+    use soroban_sdk::{Address, Env, String};
 
     #[test]
     fn test_post_and_get_gist() {
@@ -117,6 +127,43 @@ mod tests {
         assert_eq!(gist.location_cell, location);
         assert_eq!(gist.content_hash, hash);
         assert_eq!(gist.created_at, 1_000_000);
+    }
+
+    #[test]
+    fn test_post_gist_with_signed_author() {
+        let env = Env::default();
+        let contract_id = env.register(GistRegistry, ());
+        let client = GistRegistryClient::new(&env, &contract_id);
+
+        let author = Address::generate(&env);
+        env.mock_all_auths();
+
+        let location = String::from_str(&env, "r3gx");
+        let hash = String::from_str(&env, "QmTest123");
+
+        let id = client.post_gist(&Some(author.clone()), &location, &hash);
+        assert_eq!(id, 1);
+
+        let gist = client.get_gist(&id).expect("gist should exist");
+        assert_eq!(gist.author, Some(author));
+    }
+
+    #[test]
+    // `author.require_auth()` fails when the attributed author has not signed
+    // the invocation; the host surfaces this as `Error(Auth, InvalidAction)`.
+    #[should_panic(expected = "Error(Auth, InvalidAction)")]
+    fn test_post_gist_with_unauthenticated_author_fails() {
+        let env = Env::default();
+        let contract_id = env.register(GistRegistry, ());
+        let client = GistRegistryClient::new(&env, &contract_id);
+
+        let victim = Address::generate(&env);
+        // No auth is mocked, so the caller cannot authorize on the victim's behalf.
+
+        let location = String::from_str(&env, "r3gx");
+        let hash = String::from_str(&env, "QmTest123");
+
+        client.post_gist(&Some(victim), &location, &hash);
     }
 
     #[test]
