@@ -7,15 +7,18 @@
 # when the image is built as part of a `docker buildx` multi-arch build.
 #
 # Security: gosu is rebuilt from source against a patched Go toolchain to
-# remediate CVE-2026-42504 in the binary shipped with the upstream image.
+# remediate the Go stdlib CVEs (CVE-2026-33818, CVE-2026-39821,
+# CVE-2026-46600, CVE-2026-56853, CVE-2026-56858, CVE-2026-56859,
+# CVE-2026-56860, CVE-2026-56862) in the binary shipped with the upstream image.
 #
 # BUILDPLATFORM and TARGETPLATFORM are automatic ARGs injected by Buildx —
 # do NOT declare them manually, that overrides them with empty strings.
 # See: https://docs.docker.com/engine/reference/builder/#automatic-platform-args-in-the-global-scope
 
-# Stage 1: Build gosu with a patched Go version to fix CVE-2026-42504.
-# Run on BUILDPLATFORM so the Go compiler executes natively (no QEMU).
-FROM --platform=$BUILDPLATFORM golang:1.26.5-alpine AS gosu-builder
+# Stage 1: Build gosu with a patched Go version (1.26.6) to remediate the
+# Go stdlib CVEs above. Run on BUILDPLATFORM so the Go compiler executes
+# natively (no QEMU).
+FROM --platform=$BUILDPLATFORM golang:1.26.6-alpine AS gosu-builder
 RUN apk add --no-cache git
 WORKDIR /go/src/github.com/tianon/gosu
 RUN git clone https://github.com/tianon/gosu.git . && \
