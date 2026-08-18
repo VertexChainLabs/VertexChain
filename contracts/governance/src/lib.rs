@@ -18,7 +18,6 @@ pub enum GovernanceDataKey {
     /// New: stores a `VoteRecord` struct per (proposal_id, voter).
     /// Old entries stored `bool`; `migrate_votes` converts them during upgrade.
     UserVote(u32, Address),
-    ConfigValue(String),
     /// New: maps a proposer `Address` -> `Vec<u32>` of their proposal IDs.
     ProposalsByProposer(Address),
     /// Set to `true` once `migrate_votes` has run; prevents double-migration.
@@ -150,6 +149,10 @@ impl GovernanceEvents {
 // ---------------------------------------------------------------------------
 
 const MAX_CONFIG_STRING_LENGTH: u32 = 256;
+
+/// Upper bound for `required_approvals`. Values above this would make it
+/// impossible to gather enough approvals, effectively bricking governance.
+const MAX_REQUIRED_APPROVALS: u32 = 1_000_000;
 
 pub fn initialize_governance(env: &Env, admin: Address, required_approvals: u32) {
     if env.storage().instance().has(&GovernanceDataKey::Admin) {
@@ -332,6 +335,66 @@ pub fn get_executor_allowlist(env: &Env) -> Vec<Address> {
         .unwrap_or_else(|| vec![env])
 }
 
+/// The single config key that a proposal may change. `admin` and
+/// `executor_allowlist` are intentionally excluded: they are managed through
+/// their dedicated admin-only entry points (`update_admin` /
+/// `set_executor_allowlist`) and would require a defined Address / Vec<Address>
+/// string encoding, which this contract does not define.
+fn is_governable_key(env: &Env, key: &String) -> bool {
+    let required_str = String::from_str(env, "required_approvals");
+    *key == required_str
+}
+
+/// Parses the decimal string form of `required_approvals`, validates it, and
+/// writes the typed [`GovernanceDataKey::RequiredApprovals`] value. Rejects
+/// empty, non-numeric, zero, and out-of-range values so a proposal cannot
+/// silently disable or brick voting.
+fn apply_required_approvals(env: &Env, value: &String) {
+    let len = value.len();
+    // `u32::MAX` is 10 digits; anything longer cannot fit and is rejected here.
+    if len == 0 || len > 10 {
+        panic_with_error!(env, GovernanceError::InvalidInput);
+    }
+
+    let mut buf = [0u8; 10];
+    value.copy_into_slice(&mut buf[..len as usize]);
+
+    let mut parsed: u32 = 0;
+    for &byte in buf.iter().take(len as usize) {
+        if !byte.is_ascii_digit() {
+            panic_with_error!(env, GovernanceError::InvalidInput);
+        }
+        parsed = parsed
+            .checked_mul(10)
+            .and_then(|v| v.checked_add((byte - b'0') as u32))
+            .unwrap_or_else(|| panic_with_error!(env, GovernanceError::InvalidInput));
+    }
+
+    if parsed == 0 || parsed > MAX_REQUIRED_APPROVALS {
+        panic_with_error!(env, GovernanceError::InvalidInput);
+    }
+
+    env.storage()
+        .instance()
+        .set(&GovernanceDataKey::RequiredApprovals, &parsed);
+}
+
+/// Formats a `u32` as a decimal Soroban string for the `get_config` view.
+fn u32_to_string(env: &Env, value: u32) -> String {
+    if value == 0 {
+        return String::from_str(env, "0");
+    }
+    let mut buf = [0u8; 10];
+    let mut v = value;
+    let mut idx = buf.len();
+    while v > 0 {
+        idx -= 1;
+        buf[idx] = b'0' + (v % 10) as u8;
+        v /= 10;
+    }
+    String::from_bytes(env, &buf[idx..])
+}
+
 pub fn execute_proposal(env: &Env, caller: Address, proposal_id: u32) {
     caller.require_auth();
 
@@ -370,10 +433,16 @@ pub fn execute_proposal(env: &Env, caller: Address, proposal_id: u32) {
         }
     }
 
-    env.storage().persistent().set(
-        &GovernanceDataKey::ConfigValue(proposal.config_key.clone()),
-        &proposal.config_value,
-    );
+    // Apply the proposal by dispatching on a typed, explicitly-governable
+    // parameter. `required_approvals` is the only proposal-governable key;
+    // anything else (including `admin` / `executor_allowlist`, which have
+    // their own admin-only setters) is rejected rather than persisted as dead
+    // `ConfigValue` storage.
+    if is_governable_key(env, &proposal.config_key) {
+        apply_required_approvals(env, &proposal.config_value);
+    } else {
+        panic_with_error!(env, GovernanceError::InvalidInput);
+    }
 
     proposal.executed = true;
     env.storage()
@@ -496,10 +565,18 @@ impl GovernanceContract {
             .get(&GovernanceDataKey::Proposal(proposal_id))
     }
 
+    /// Returns the current value of a governable parameter as a string.
+    /// Only `required_approvals` is governable via proposals; every other key
+    /// returns `None` (the former `ConfigValue` string map has been removed).
     pub fn get_config(env: Env, config_key: String) -> Option<String> {
-        env.storage()
-            .persistent()
-            .get(&GovernanceDataKey::ConfigValue(config_key))
+        if is_governable_key(&env, &config_key) {
+            env.storage()
+                .instance()
+                .get(&GovernanceDataKey::RequiredApprovals)
+                .map(|value: u32| u32_to_string(&env, value))
+        } else {
+            None
+        }
     }
 
     /// Returns all proposal IDs created by `proposer` (empty Vec if none).
@@ -574,16 +651,176 @@ mod tests {
         let client = GovernanceContractClient::new(&env, &cid);
         client.initialize(&admin, &2);
 
-        let config_key = s(&env, "test_key");
-        let config_value = s(&env, "test_value");
+        let config_key = s(&env, "required_approvals");
+        let config_value = s(&env, "3");
         let pid = client.create_proposal(&proposer, &config_key, &config_value, &1000);
 
         // approval votes (against = false)
         client.vote_proposal(&voter1, &pid, &false);
         client.vote_proposal(&voter2, &pid, &false);
-        client.execute_proposal(&admin, &pid);
+        // The proposer executes their own proposal, so the executor allow-list
+        // gate does not apply.
+        client.execute_proposal(&proposer, &pid);
 
         assert_eq!(client.get_config(&config_key), Some(config_value));
+    }
+
+    // ------------------------------------------------------------------
+    // New: governable required_approvals tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    // GovernanceError::NotEnoughApprovals = 8
+    #[should_panic(expected = "Error(Contract, #8)")]
+    fn test_followup_proposal_needs_new_threshold() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer = Address::generate(&env);
+        let voter1 = Address::generate(&env);
+        let voter2 = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        // Raise the threshold from 2 to 3.
+        let pid1 = client.create_proposal(
+            &proposer,
+            &s(&env, "required_approvals"),
+            &s(&env, "3"),
+            &1000,
+        );
+        client.vote_proposal(&voter1, &pid1, &false);
+        client.vote_proposal(&voter2, &pid1, &false);
+        client.execute_proposal(&proposer, &pid1);
+
+        // The typed value is now visible through get_config.
+        assert_eq!(
+            client.get_config(&s(&env, "required_approvals")),
+            Some(s(&env, "3"))
+        );
+
+        // A follow-up proposal gets only 2 approvals, which met the old
+        // threshold but no longer meets the new threshold of 3.
+        let pid2 = client.create_proposal(
+            &proposer,
+            &s(&env, "required_approvals"),
+            &s(&env, "4"),
+            &1000,
+        );
+        client.vote_proposal(&voter1, &pid2, &false);
+        client.vote_proposal(&voter2, &pid2, &false);
+        client.execute_proposal(&proposer, &pid2); // → NotEnoughApprovals (#8)
+    }
+
+    #[test]
+    // GovernanceError::InvalidInput = 10
+    #[should_panic(expected = "Error(Contract, #10)")]
+    fn test_execute_rejects_unknown_key() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer = Address::generate(&env);
+        let voter1 = Address::generate(&env);
+        let voter2 = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        let pid = client.create_proposal(&proposer, &s(&env, "unknown_key"), &s(&env, "v"), &1000);
+        client.vote_proposal(&voter1, &pid, &false);
+        client.vote_proposal(&voter2, &pid, &false);
+        client.execute_proposal(&proposer, &pid); // → InvalidInput (#10)
+    }
+
+    #[test]
+    // GovernanceError::InvalidInput = 10
+    #[should_panic(expected = "Error(Contract, #10)")]
+    fn test_required_approvals_rejects_zero() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer = Address::generate(&env);
+        let voter1 = Address::generate(&env);
+        let voter2 = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        let pid = client.create_proposal(
+            &proposer,
+            &s(&env, "required_approvals"),
+            &s(&env, "0"),
+            &1000,
+        );
+        client.vote_proposal(&voter1, &pid, &false);
+        client.vote_proposal(&voter2, &pid, &false);
+        client.execute_proposal(&proposer, &pid); // → InvalidInput (#10)
+    }
+
+    #[test]
+    // GovernanceError::InvalidInput = 10
+    #[should_panic(expected = "Error(Contract, #10)")]
+    fn test_required_approvals_rejects_out_of_range() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer = Address::generate(&env);
+        let voter1 = Address::generate(&env);
+        let voter2 = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        // `MAX_REQUIRED_APPROVALS + 1` is rejected as out-of-range.
+        let pid = client.create_proposal(
+            &proposer,
+            &s(&env, "required_approvals"),
+            &s(&env, "1000001"),
+            &1000,
+        );
+        client.vote_proposal(&voter1, &pid, &false);
+        client.vote_proposal(&voter2, &pid, &false);
+        client.execute_proposal(&proposer, &pid); // → InvalidInput (#10)
+    }
+
+    #[test]
+    // GovernanceError::InvalidInput = 10
+    #[should_panic(expected = "Error(Contract, #10)")]
+    fn test_required_approvals_rejects_non_numeric() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let proposer = Address::generate(&env);
+        let voter1 = Address::generate(&env);
+        let voter2 = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        let pid = client.create_proposal(
+            &proposer,
+            &s(&env, "required_approvals"),
+            &s(&env, "abc"),
+            &1000,
+        );
+        client.vote_proposal(&voter1, &pid, &false);
+        client.vote_proposal(&voter2, &pid, &false);
+        client.execute_proposal(&proposer, &pid); // → InvalidInput (#10)
+    }
+
+    #[test]
+    fn test_get_config_returns_none_for_ungovernable_key() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let cid = env.register(GovernanceContract, ());
+        let client = GovernanceContractClient::new(&env, &cid);
+        client.initialize(&admin, &2);
+
+        // Only `required_approvals` is governable; everything else is None.
+        assert_eq!(client.get_config(&s(&env, "unknown_key")), None);
+        assert_eq!(client.get_config(&s(&env, "admin")), None);
+        assert_eq!(client.get_config(&s(&env, "executor_allowlist")), None);
     }
 
     // ------------------------------------------------------------------
