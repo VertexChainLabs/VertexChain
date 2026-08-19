@@ -126,6 +126,9 @@ resource "aws_s3_bucket_lifecycle_configuration" "terraform_state" {
     id     = "state-version-lifecycle"
     status = "Enabled"
 
+    # Applies to all objects in the state bucket
+    filter {}
+
     # Keep up to 10 noncurrent versions for safe rollback
     noncurrent_version_expiration {
       noncurrent_days           = 90
