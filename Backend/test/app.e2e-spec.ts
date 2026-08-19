@@ -46,4 +46,18 @@ describe('AppModule (e2e)', () => {
       expect(res.body.status).toBe('degraded');
     }
   });
+
+  it('GET /health is served by the DB/PostGIS probe, never the static placeholder', async () => {
+    // Regression guard for #429: AppController used to register a second
+    // GET /health that returned a static `{ status: 'ok' }` body and raced
+    // the real probe for the same route. That handler is gone, so the
+    // response must always carry the `services` envelope the probe emits;
+    // the static placeholder never has one.
+    const res = await request(app.getHttpServer()).get('/health');
+
+    expect([200, 503]).toContain(res.status);
+    expect(res.body).not.toEqual({ status: 'ok' });
+    expect(res.body.services).toHaveProperty('database');
+    expect(res.body.services).toHaveProperty('postgis');
+  });
 });
