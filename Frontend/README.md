@@ -3,7 +3,7 @@
 This is the **VertexChain web frontend**, built with **Next.js**, responsible for:
 - Displaying nearby gists on a map
 - Allowing users to drop anonymous gists
-- Interacting with the Stellar/Soroban smart contract and backend API
+- Interacting with the VertexChain backend API
 
 This app is for **end users** who want to explore and contribute hyperlocal content.
 
@@ -14,7 +14,8 @@ This app is for **end users** who want to explore and contribute hyperlocal cont
 - Next.js (App Router)
 - TypeScript
 - Leaflet + react-leaflet (interactive map)
-- Stellar/Soroban smart contract interaction
+- react-leaflet-cluster (marker clustering)
+- VertexChain backend API (gists anchored on Stellar/Soroban server-side)
 
 ---
 
