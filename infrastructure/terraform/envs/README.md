@@ -96,7 +96,7 @@ s3://vertexchain-terraform-state/
   env:/prod/vertexchain/terraform.tfstate
 ```
 
-The `workspace_key_prefix = "env:"` setting in `providers.tf` handles this
+The `workspace_key_prefix = "env:"` setting in `backend.tf` handles this
 automatically — no manual path management required.
 
 ---

@@ -172,7 +172,7 @@ resource "aws_dynamodb_table" "terraform_state_lock" {
 
 # ---------------------------------------------------------------------------
 # 6. DATA SOURCE — needed for KMS policy and globally unique bucket name.
-#    Uses a distinct name ("state_backend") to avoid colliding with the
-#    conditional data "aws_caller_identity" "current" in backup-vaults.tf.
+#    Uses a distinct name ("state_backend") so it can't collide with the
+#    data "aws_caller_identity" "current" defined in the data submodule.
 # ---------------------------------------------------------------------------
 data "aws_caller_identity" "state_backend" {}
