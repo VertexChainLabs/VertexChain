@@ -143,6 +143,9 @@ resource "aws_s3_bucket_lifecycle_configuration" "uploads" {
     id     = "transition-to-ia"
     status = "Enabled"
 
+    # Applies to all objects in the uploads bucket
+    filter {}
+
     transition {
       days          = 30
       storage_class = "STANDARD_IA"
@@ -199,6 +202,9 @@ resource "aws_s3_bucket_lifecycle_configuration" "logs" {
   rule {
     id     = "expire-logs"
     status = "Enabled"
+
+    # Applies to all objects in the logs bucket
+    filter {}
 
     expiration {
       days = 90
@@ -267,7 +273,7 @@ resource "aws_backup_vault" "main" {
 resource "aws_kms_key" "dr_backup" {
   count = var.enable_cross_region_backup ? 1 : 0
 
-  providers = { aws = aws.dr }
+  provider = aws.dr
 
   description             = "${var.name_prefix} backup encryption key (DR)"
   deletion_window_in_days = 7
@@ -311,12 +317,22 @@ resource "aws_kms_key" "dr_backup" {
 resource "aws_backup_vault" "dr" {
   count = var.enable_cross_region_backup ? 1 : 0
 
-  providers = { aws = aws.dr }
+  provider = aws.dr
 
   name        = "${var.name_prefix}-dr-vault"
   kms_key_arn = aws_kms_key.dr_backup[0].arn
 
-  access_policy = jsonencode({
+  tags = merge(var.tags, { Name = "${var.name_prefix}-dr-vault" })
+}
+
+resource "aws_backup_vault_policy" "dr" {
+  count = var.enable_cross_region_backup ? 1 : 0
+
+  provider = aws.dr
+
+  backup_vault_name = aws_backup_vault.dr[0].name
+
+  policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
@@ -339,8 +355,6 @@ resource "aws_backup_vault" "dr" {
       },
     ]
   })
-
-  tags = merge(var.tags, { Name = "${var.name_prefix}-dr-vault" })
 }
 
 resource "aws_backup_plan" "daily" {

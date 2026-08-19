@@ -126,6 +126,9 @@ resource "aws_s3_bucket_lifecycle_configuration" "terraform_state" {
     id     = "state-version-lifecycle"
     status = "Enabled"
 
+    # Applies to all objects in the state bucket
+    filter {}
+
     # Keep up to 10 noncurrent versions for safe rollback
     noncurrent_version_expiration {
       noncurrent_days           = 90
@@ -169,7 +172,7 @@ resource "aws_dynamodb_table" "terraform_state_lock" {
 
 # ---------------------------------------------------------------------------
 # 6. DATA SOURCE — needed for KMS policy and globally unique bucket name.
-#    Uses a distinct name ("state_backend") to avoid colliding with the
-#    conditional data "aws_caller_identity" "current" in backup-vaults.tf.
+#    Uses a distinct name ("state_backend") so it can't collide with the
+#    data "aws_caller_identity" "current" defined in the data submodule.
 # ---------------------------------------------------------------------------
 data "aws_caller_identity" "state_backend" {}

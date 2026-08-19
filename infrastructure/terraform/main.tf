@@ -242,16 +242,24 @@ resource "aws_route53_record" "root_a" {
   zone_id = aws_route53_zone.main.zone_id
   name    = var.domain_name
   type    = "A"
-  ttl     = 300
-  records = ["0.0.0.0"] # FIXME: replace with actual ALB IP or use alias
+
+  alias {
+    name                   = module.compute.alb_dns_name
+    zone_id                = module.compute.alb_zone_id
+    evaluate_target_health = true
+  }
 }
 
-resource "aws_route53_record" "api_cname" {
+resource "aws_route53_record" "api_a" {
   zone_id = aws_route53_zone.main.zone_id
   name    = "api.${var.domain_name}"
-  type    = "CNAME"
-  ttl     = 300
-  records = ["alb.${var.domain_name}"]
+  type    = "A"
+
+  alias {
+    name                   = module.compute.alb_dns_name
+    zone_id                = module.compute.alb_zone_id
+    evaluate_target_health = true
+  }
 }
 
 resource "aws_route53_health_check" "api" {
