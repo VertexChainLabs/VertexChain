@@ -15,7 +15,7 @@ export class Gist {
   @Column({ type: 'varchar', length: 100, nullable: true })
   content_hash: string | null;
 
-  @Index({ unique: true })
+  @Index('UQ_gists_stellar_gist_id', { unique: true })
   @Column({ type: 'varchar', length: 80, nullable: true })
   stellar_gist_id: string | null;
 

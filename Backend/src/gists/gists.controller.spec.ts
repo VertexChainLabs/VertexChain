@@ -106,8 +106,23 @@ describe('GistsController', () => {
 
       const response = await controller.create(dto, null);
 
-      expect(service.create).toHaveBeenCalledWith(dto, null);
+      expect(service.create).toHaveBeenCalledWith(dto, null, undefined);
       expect(response).toEqual(result);
+    });
+
+    it('should forward the Idempotency-Key header to the service', async () => {
+      const dto: CreateGistDto = {
+        content: 'Great coffee spot here!',
+        lat: 9.0579,
+        lon: 7.4951,
+      };
+      const result = createMockGist({ content: dto.content });
+
+      jest.spyOn(service, 'create').mockResolvedValueOnce(result);
+
+      await controller.create(dto, null, 'key-123');
+
+      expect(service.create).toHaveBeenCalledWith(dto, null, 'key-123');
     });
 
     it('should call gistsService.create without optional author field', async () => {
@@ -122,7 +137,7 @@ describe('GistsController', () => {
 
       const response = await controller.create(dto, null);
 
-      expect(service.create).toHaveBeenCalledWith(dto, null);
+      expect(service.create).toHaveBeenCalledWith(dto, null, undefined);
       expect(response).toEqual(result);
     });
 
@@ -241,43 +256,45 @@ describe('GistsController', () => {
   });
 
   describe('update()', () => {
-    it('should call gistsService.update with the id and DTO', async () => {
+    const verified = { address: 'GABC...XYZ', verifiedAt: new Date() };
+
+    it('should call gistsService.update with the id, DTO, and verified user', async () => {
       const id = '123e4567-e89b-12d3-a456-426614174000';
-      const dto: UpdateGistDto = { content: 'Fixed typo', author: 'GABC...XYZ' };
-      const result = createMockGist({ id, content: dto.content, author: dto.author });
+      const dto: UpdateGistDto = { content: 'Fixed typo' };
+      const result = createMockGist({ id, content: dto.content, author: verified.address });
 
       jest.spyOn(service, 'update').mockResolvedValueOnce(result);
 
-      const response = await controller.update(id, dto);
+      const response = await controller.update(id, dto, verified);
 
-      expect(service.update).toHaveBeenCalledWith(id, dto);
+      expect(service.update).toHaveBeenCalledWith(id, dto, verified);
       expect(response).toEqual(result);
     });
 
     it('should propagate a 410 Gone error when the edit window has closed', async () => {
       const id = '123e4567-e89b-12d3-a456-426614174000';
-      const dto: UpdateGistDto = { content: 'Fixed typo', author: 'GABC...XYZ' };
+      const dto: UpdateGistDto = { content: 'Fixed typo' };
       const error = Object.assign(new Error('Edit window has closed for this gist'), {
         status: 410,
       });
 
       jest.spyOn(service, 'update').mockRejectedValueOnce(error);
 
-      await expect(controller.update(id, dto)).rejects.toThrow(
+      await expect(controller.update(id, dto, verified)).rejects.toThrow(
         'Edit window has closed for this gist',
       );
     });
 
-    it('should propagate a forbidden error when the author does not match', async () => {
+    it('should propagate a forbidden error when the signed address does not match', async () => {
       const id = '123e4567-e89b-12d3-a456-426614174000';
-      const dto: UpdateGistDto = { content: 'Fixed typo', author: 'GIMPOSTOR' };
+      const dto: UpdateGistDto = { content: 'Fixed typo' };
       const error = Object.assign(new Error('Only the original author may edit this gist'), {
         status: 403,
       });
 
       jest.spyOn(service, 'update').mockRejectedValueOnce(error);
 
-      await expect(controller.update(id, dto)).rejects.toThrow(
+      await expect(controller.update(id, dto, verified)).rejects.toThrow(
         'Only the original author may edit this gist',
       );
     });

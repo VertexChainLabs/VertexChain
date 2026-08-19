@@ -4,16 +4,18 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import '@/styles/leaflet-dark.css';
 import { icon } from 'leaflet';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import AddGistModal from './AddGistModal';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+import { postGist, GistApiError } from '@/api/gists';
 
 export interface Gist {
-  id: number;
+  id: string | number;
   content: string;
   lat: number;
   lng: number;
+  status?: 'pending' | 'delivered' | 'error';
 }
 
 const greenIcon = icon({
@@ -86,15 +88,90 @@ export default function Map() {
     );
   }, []);
 
-  const handleAddGist = (content: string) => {
-    const newGist: Gist = {
-      id: Date.now(),
-      content,
-      lat: position[0],
-      lng: position[1],
+  const [toast, setToast] = useState<{
+    message: string;
+    type: 'success' | 'error';
+  } | null>(null);
+
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clean up the toast timer on unmount
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current !== null) {
+        clearTimeout(toastTimerRef.current);
+      }
     };
-    setGists((prevGists) => [...prevGists, newGist]);
-  };
+  }, []);
+
+  const showToast = useCallback(
+    (message: string, type: 'success' | 'error') => {
+      // Clear any existing timer before setting a new one
+      if (toastTimerRef.current !== null) {
+        clearTimeout(toastTimerRef.current);
+      }
+      setToast({ message, type });
+      toastTimerRef.current = setTimeout(() => {
+        toastTimerRef.current = null;
+        setToast(null);
+      }, 4000);
+    },
+    [],
+  );
+
+  const handleAddGist = useCallback(
+    async (content: string) => {
+      // Create an optimistic gist with a temporary client-side id
+      const tempId = `optimistic-${Date.now()}`;
+      const optimisticGist: Gist = {
+        id: tempId,
+        content,
+        lat: position[0],
+        lng: position[1],
+        status: 'pending',
+      };
+
+      // Optimistic insert — add immediately to local state
+      setGists((prevGists) => [...prevGists, optimisticGist]);
+
+      try {
+        const serverGist = await postGist({
+          content,
+          lat: position[0],
+          lon: position[1],
+        });
+
+        // Replace the optimistic entry with the server-confirmed one
+        setGists((prevGists) =>
+          prevGists.map((g) =>
+            g.id === tempId
+              ? {
+                  id: serverGist.id,
+                  content: serverGist.content,
+                  lat: serverGist.lat,
+                  lng: serverGist.lon,
+                  status: 'delivered' as const,
+                }
+              : g,
+          ),
+        );
+
+        showToast('Gist pinned successfully!', 'success');
+      } catch (err) {
+        // Rollback — remove the optimistic entry on error
+        setGists((prevGists) =>
+          prevGists.filter((g) => g.id !== tempId),
+        );
+
+        const message =
+          err instanceof GistApiError
+            ? err.message
+            : 'Network error — please try again.';
+        showToast(message, 'error');
+      }
+    },
+    [position, showToast],
+  );
 
   return (
     <div className="relative h-full w-full">
@@ -116,6 +193,26 @@ export default function Map() {
           </Marker>
         ))}
       </MapContainer>
+
+      {/* Toast notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            role="alert"
+            aria-live="assertive"
+            className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-[2000] px-6 py-3 rounded-lg shadow-xl text-white font-medium text-sm ${
+              toast.type === 'success'
+                ? 'bg-green-600'
+                : 'bg-red-600'
+            }`}
+          >
+            {toast.message}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <motion.button
         onClick={() => setIsModalOpen(true)}

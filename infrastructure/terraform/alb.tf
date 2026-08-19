@@ -13,6 +13,8 @@ resource "aws_lb" "main" {
   }
 }
 
+# tfsec:ignore:aws-ec2-no-public-ingress-sgr ALB must accept HTTP(S) traffic
+# from the public internet; client IPs are not known in advance.
 resource "aws_security_group" "alb" {
   name        = "${var.project_name}-${var.environment}-alb-sg"
   description = "Security group for ALB"

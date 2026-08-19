@@ -87,17 +87,22 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
             created_at: new Date(event.createdAt * 1000),
           });
 
-          maxLedger = Math.max(maxLedger, event.createdAt);
+          maxLedger = Math.max(maxLedger, event.ledger);
           indexedCount++;
 
           this.logger.debug(
-            `Indexed gist ${event.gistId} @ cell ${event.locationCell} (ledger ${event.createdAt})`,
+            `Indexed gist ${event.gistId} @ cell ${event.locationCell} (ledger ${event.ledger})`,
           );
         } catch (eventErr) {
           this.logger.error(
             `Failed to index event for gist ${event.gistId} @ cell ${event.locationCell}`,
             eventErr,
           );
+          // Stop advancing the cursor at the first failure. Events are assumed
+          // to be returned in ledger order, so retrying from here on the next
+          // poll re-delivers this event and everything after it. Advancing past
+          // a failed upsert would permanently skip that gist.
+          break;
         }
       }
 

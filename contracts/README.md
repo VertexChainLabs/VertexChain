@@ -50,7 +50,7 @@ Location-aware gist registry for storing and retrieving gists by geographic cell
 | `created_at` | `u64` | Ledger timestamp at creation |
 
 **Methods:**
-- `post_gist(author, location_cell, content_hash)` - Register a new gist
+- `post_gist(author, location_cell, content_hash)` - Register a new gist. Anonymous posting (`author = None`) requires no auth; a non-anonymous post (`Some(address)`) requires that address to authorize the invocation (`require_auth`), so gist attribution cannot be forged.
 - `get_gist(gist_id)` - Retrieve a gist record by id
 - `list_gists_by_cell(location_cell, cursor, limit)` - Paginated list of gists within a location cell
 
@@ -78,15 +78,30 @@ Governance contract for proposing and voting on configuration changes.
 **Features:**
 - Proposal creation with configurable duration
 - Voting mechanism with approval thresholds
-- Configurable string-based key-value storage
-- Admin management
+- Typed parameter governance: an executed proposal changes the `required_approvals` threshold the contract actually reads
+- Admin and executor allow-list management
 
 **Methods:**
 - `initialize(admin, required_approvals)` - Initialize governance
 - `create_proposal(proposer, config_key, config_value, duration_seconds)` - Create a proposal
-- `vote_proposal(voter, proposal_id)` - Vote on a proposal
+- `vote_proposal(voter, proposal_id, against)` - Vote on a proposal (`against = false` approves, `true` rejects)
 - `execute_proposal(caller, proposal_id)` - Execute an approved proposal
-- `get_config(config_key)` - Retrieve a configuration value
+- `get_config(config_key)` - Retrieve the value of a governable parameter
+
+**Governable config keys**
+
+`execute_proposal` only applies proposals whose `config_key` maps to a typed,
+explicitly-governable parameter. Currently there is one:
+
+| `config_key` | Parsed value | Validation | Effect |
+|---|---|---|---|
+| `required_approvals` | decimal `u32` string | `1..=1_000_000` (rejects empty, non-numeric, `0`, and out-of-range) | Updates the `RequiredApprovals` threshold read by the next `execute_proposal` |
+
+Any other key — including `admin` and `executor_allowlist`, which are managed
+through their dedicated admin-only setters (`update_admin` /
+`set_executor_allowlist`) — is rejected with `GovernanceError::InvalidInput`
+instead of being persisted as dead storage. `get_config` returns the current
+value for `required_approvals` and `None` for every other key.
 
 ### BatchWallet
 

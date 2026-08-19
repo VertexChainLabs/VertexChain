@@ -1,8 +1,38 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import * as request from 'supertest';
+import { Keypair } from '@stellar/stellar-sdk';
+import { createHash } from 'crypto';
 import { AppModule } from 'src/app.module';
 import { AllExceptionsFilter } from 'src/common/filters/all-exceptions.filter';
+
+// Mirrors StellarAuthGuard.canonicalizeBody so e2e requests can be signed
+// against the exact bytes the guard hashes.
+function canonicalizeBody(body: unknown): string {
+  if (body === null || body === undefined) return '';
+  if (typeof body !== 'object' || Array.isArray(body)) return JSON.stringify(body);
+  const keys = Object.keys(body as Record<string, unknown>).sort();
+  const canonical: Record<string, unknown> = {};
+  for (const key of keys) {
+    const value = (body as Record<string, unknown>)[key];
+    canonical[key] =
+      value !== null && typeof value === 'object' && !Array.isArray(value)
+        ? JSON.parse(canonicalizeBody(value))
+        : value;
+  }
+  return JSON.stringify(canonical);
+}
+
+function signHeaders(keypair: Keypair, body: unknown): Record<string, string> {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const bodyHash = createHash('sha256').update(canonicalizeBody(body), 'utf-8').digest();
+  const message = `${timestamp}.${bodyHash.toString('hex')}`;
+  return {
+    'x-stellar-signature': keypair.sign(Buffer.from(message, 'utf-8')).toString('hex'),
+    'x-stellar-address': keypair.publicKey(),
+    'x-stellar-timestamp': String(timestamp),
+  };
+}
 
 describe('Gists (e2e)', () => {
   jest.setTimeout(30000);
@@ -162,35 +192,39 @@ describe('Gists (e2e)', () => {
   });
 
   describe('PATCH /gists/:id', () => {
-    async function createAuthoredGist(author = 'GABC...XYZ') {
+    async function createAuthoredGist(keypair = Keypair.random()) {
       const csrf = await getCsrfToken(app.getHttpServer());
+      const body = { content: 'original content', lat: 9.0579, lon: 7.4951 };
       const res = await request(app.getHttpServer())
         .post('/gists')
         .set('Cookie', csrf.cookie)
         .set('x-csrf-token', csrf.token)
-        .send({ content: 'original content', lat: 9.0579, lon: 7.4951, author })
+        .set(signHeaders(keypair, body))
+        .send(body)
         .expect(201);
-      return res.body;
+      return { gist: res.body, keypair };
     }
 
     it('should reject PATCH /gists/:id without CSRF token', async () => {
-      const gist = await createAuthoredGist();
+      const { gist } = await createAuthoredGist();
 
       await request(app.getHttpServer())
         .patch(`/gists/${gist.id}`)
-        .send({ content: 'fixed typo', author: 'GABC...XYZ' })
+        .send({ content: 'fixed typo' })
         .expect(403);
     });
 
     it('should edit a gist within the 60s window and preserve CID lineage', async () => {
-      const gist = await createAuthoredGist();
+      const { gist, keypair } = await createAuthoredGist();
       const csrf = await getCsrfToken(app.getHttpServer());
+      const patchBody = { content: 'fixed typo' };
 
       const res = await request(app.getHttpServer())
         .patch(`/gists/${gist.id}`)
         .set('Cookie', csrf.cookie)
         .set('x-csrf-token', csrf.token)
-        .send({ content: 'fixed typo', author: 'GABC...XYZ' })
+        .set(signHeaders(keypair, patchBody))
+        .send(patchBody)
         .expect(200);
 
       expect(res.body).toMatchObject({
@@ -202,38 +236,56 @@ describe('Gists (e2e)', () => {
       expect(res.body.content_hash).not.toBe(gist.content_hash);
     });
 
-    it('should return 403 when the author does not match', async () => {
-      const gist = await createAuthoredGist('GABC...XYZ');
+    it('should return 401 when PATCHing without Stellar signature headers', async () => {
+      const { gist } = await createAuthoredGist();
       const csrf = await getCsrfToken(app.getHttpServer());
 
       await request(app.getHttpServer())
         .patch(`/gists/${gist.id}`)
         .set('Cookie', csrf.cookie)
         .set('x-csrf-token', csrf.token)
-        .send({ content: 'imposter edit', author: 'GIMPOSTOR' })
+        .send({ content: 'fixed typo' })
+        .expect(401);
+    });
+
+    it('should return 403 when a different address signs the edit', async () => {
+      const { gist } = await createAuthoredGist();
+      const csrf = await getCsrfToken(app.getHttpServer());
+      const patchBody = { content: 'imposter edit' };
+
+      await request(app.getHttpServer())
+        .patch(`/gists/${gist.id}`)
+        .set('Cookie', csrf.cookie)
+        .set('x-csrf-token', csrf.token)
+        .set(signHeaders(Keypair.random(), patchBody))
+        .send(patchBody)
         .expect(403);
     });
 
     it('should return 404 for a non-existent gist', async () => {
       const csrf = await getCsrfToken(app.getHttpServer());
+      const patchBody = { content: 'no such gist' };
 
       await request(app.getHttpServer())
         .patch('/gists/00000000-0000-0000-0000-000000000000')
         .set('Cookie', csrf.cookie)
         .set('x-csrf-token', csrf.token)
-        .send({ content: 'no such gist', author: 'GABC...XYZ' })
+        .set(signHeaders(Keypair.random(), patchBody))
+        .send(patchBody)
         .expect(404);
     });
 
     it('should return 400 when content exceeds 280 characters', async () => {
-      const gist = await createAuthoredGist();
+      const { gist, keypair } = await createAuthoredGist();
       const csrf = await getCsrfToken(app.getHttpServer());
+      const patchBody = { content: 'x'.repeat(281) };
 
       await request(app.getHttpServer())
         .patch(`/gists/${gist.id}`)
         .set('Cookie', csrf.cookie)
         .set('x-csrf-token', csrf.token)
-        .send({ content: 'x'.repeat(281), author: 'GABC...XYZ' })
+        .set(signHeaders(keypair, patchBody))
+        .send(patchBody)
         .expect(400);
     });
   });
