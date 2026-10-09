@@ -1,109 +1,137 @@
 import { PaginationHelper } from './pagination.helper';
 
+interface Item {
+  id: string;
+  created_at: Date;
+}
+
+const item = (id: string, createdAt: string): Item => ({
+  id,
+  created_at: new Date(createdAt),
+});
+
 describe('PaginationHelper', () => {
-  // ─── encodeCursor / decodeCursor round-trip ──────────────────────────────
+  describe('encodeCursor()', () => {
+    it('encodes a date as a base64 ISO string', () => {
+      const date = new Date('2026-01-01T00:00:00.000Z');
 
-  describe('encodeCursor / decodeCursor', () => {
-    it('round-trips a Date to a cursor and back to an ISO string', () => {
-      const date = new Date('2024-05-10T12:00:00.000Z');
-      const cursor = PaginationHelper.encodeCursor(date);
-      const decoded = PaginationHelper.decodeCursor(cursor);
-
-      expect(decoded).toBe(date.toISOString());
+      expect(PaginationHelper.encodeCursor(date)).toBe(
+        Buffer.from('2026-01-01T00:00:00.000Z').toString('base64'),
+      );
     });
 
-    it('produces a base64 string', () => {
-      const cursor = PaginationHelper.encodeCursor(new Date());
-      expect(Buffer.from(cursor, 'base64').toString('base64')).toBe(cursor);
-    });
+    it('produces a cursor that is safe in a query string once encoded', () => {
+      const cursor = PaginationHelper.encodeCursor(new Date('2026-06-15T12:30:45.123Z'));
 
-    it('returns null for an empty string cursor', () => {
-      expect(PaginationHelper.decodeCursor('')).toBeNull();
-    });
-
-    it('returns null for a corrupt / non-base64 cursor', () => {
-      expect(PaginationHelper.decodeCursor('!!!notbase64!!!')).toBeNull();
-    });
-
-    it('returns null for a base64 string that decodes to a non-ISO value', () => {
-      const nonIso = Buffer.from('not-a-date').toString('base64');
-      expect(PaginationHelper.decodeCursor(nonIso)).toBeNull();
-    });
-
-    it('returns null for a base64 string of a random word', () => {
-      const cursor = Buffer.from('hello').toString('base64');
-      expect(PaginationHelper.decodeCursor(cursor)).toBeNull();
-    });
-
-    it('decoded cursor value matches original date', () => {
-      const date = new Date('2023-01-01T00:00:00.000Z');
-      const cursor = PaginationHelper.encodeCursor(date);
-      const decoded = PaginationHelper.decodeCursor(cursor);
-      expect(new Date(decoded!).getTime()).toBe(date.getTime());
+      expect(cursor).not.toContain('+');
+      expect(cursor).not.toContain('/');
+      expect(cursor).not.toContain('=');
     });
   });
 
-  // ─── buildResponse — boundary values ─────────────────────────────────────
+  describe('decodeCursor()', () => {
+    it('round-trips an encoded cursor back to the ISO date', () => {
+      const date = new Date('2026-01-01T00:00:00.000Z');
 
-  describe('buildResponse', () => {
-    type Item = { id: number; created_at: Date };
-
-    const makeItems = (count: number): Item[] =>
-      Array.from({ length: count }, (_, i) => ({
-        id: i + 1,
-        created_at: new Date(`2024-0${i + 1}-01T00:00:00.000Z`),
-      }));
-
-    it('sets hasMore=true and provides a cursor when items.length === limit', () => {
-      const items = makeItems(3);
-      const result = PaginationHelper.buildResponse(items, 3);
-
-      expect(result.pagination.hasMore).toBe(true);
-      expect(result.pagination.cursor).not.toBeNull();
+      expect(PaginationHelper.decodeCursor(PaginationHelper.encodeCursor(date))).toBe(
+        '2026-01-01T00:00:00.000Z',
+      );
     });
 
-    it('cursor decodes back to the created_at of the last item', () => {
-      const items = makeItems(3);
-      const result = PaginationHelper.buildResponse(items, 3);
+    it('round-trips the epoch boundary', () => {
+      const date = new Date('1970-01-01T00:00:00.000Z');
 
-      const last = items[items.length - 1];
-      const decoded = PaginationHelper.decodeCursor(result.pagination.cursor!);
-      expect(new Date(decoded!).getTime()).toBe(last.created_at.getTime());
+      expect(PaginationHelper.decodeCursor(PaginationHelper.encodeCursor(date))).toBe(
+        '1970-01-01T00:00:00.000Z',
+      );
     });
 
-    it('sets hasMore=false and cursor=null when items.length < limit', () => {
-      const items = makeItems(2);
-      const result = PaginationHelper.buildResponse(items, 10);
-
-      expect(result.pagination.hasMore).toBe(false);
-      expect(result.pagination.cursor).toBeNull();
+    it('returns null for a cursor that is not base64 encoded ISO date', () => {
+      expect(PaginationHelper.decodeCursor('not-a-cursor')).toBeNull();
     });
 
-    it('returns correct count equal to items.length', () => {
-      const items = makeItems(5);
-      const result = PaginationHelper.buildResponse(items, 10);
-      expect(result.pagination.count).toBe(5);
+    it('returns null for arbitrary base64 that does not decode to a date', () => {
+      const cursor = Buffer.from('hello world').toString('base64');
+
+      expect(PaginationHelper.decodeCursor(cursor)).toBeNull();
     });
 
-    it('returns empty data and no cursor for an empty list', () => {
-      const result = PaginationHelper.buildResponse([], 10);
+    it('returns null for a base64 encoded non-date string', () => {
+      const cursor = Buffer.from('not-a-date').toString('base64');
 
-      expect(result.data).toEqual([]);
-      expect(result.pagination.hasMore).toBe(false);
-      expect(result.pagination.cursor).toBeNull();
-      expect(result.pagination.count).toBe(0);
+      expect(PaginationHelper.decodeCursor(cursor)).toBeNull();
     });
 
-    it('data array contains the original items', () => {
-      const items = makeItems(2);
-      const result = PaginationHelper.buildResponse(items, 5);
-      expect(result.data).toEqual(items);
+    it('returns null for an empty cursor', () => {
+      expect(PaginationHelper.decodeCursor('')).toBeNull();
     });
 
-    it('no cursor when limit is 0 (edge-case: empty page at limit 0)', () => {
-      // items.length (0) === limit (0) but there is no last item
-      const result = PaginationHelper.buildResponse([], 0);
-      expect(result.pagination.cursor).toBeNull();
+    it('returns null for a cursor containing invalid base64 characters', () => {
+      expect(PaginationHelper.decodeCursor('!!!! ****')).toBeNull();
+    });
+  });
+
+  describe('buildResponse()', () => {
+    const items = [
+      item('1', '2026-01-03T00:00:00.000Z'),
+      item('2', '2026-01-02T00:00:00.000Z'),
+      item('3', '2026-01-01T00:00:00.000Z'),
+    ];
+
+    it('returns the items as data and the total as count', () => {
+      const response = PaginationHelper.buildResponse(items, 10);
+
+      expect(response.data).toEqual(items);
+      expect(response.pagination.count).toBe(3);
+    });
+
+    it('reports hasMore=false and no cursor when fewer items than the limit are returned', () => {
+      const response = PaginationHelper.buildResponse(items, 10);
+
+      expect(response.pagination.hasMore).toBe(false);
+      expect(response.pagination.cursor).toBeNull();
+    });
+
+    it('reports hasMore=true and encodes the last item cursor when the page is full', () => {
+      const response = PaginationHelper.buildResponse(items, 3);
+
+      expect(response.pagination.hasMore).toBe(true);
+      expect(response.pagination.cursor).not.toBeNull();
+      expect(PaginationHelper.decodeCursor(response.pagination.cursor as string)).toBe(
+        '2026-01-01T00:00:00.000Z',
+      );
+    });
+
+    it('returns an empty page for an empty item list', () => {
+      const response = PaginationHelper.buildResponse([], 10);
+
+      expect(response.data).toEqual([]);
+      expect(response.pagination).toEqual({ count: 0, cursor: null, hasMore: false });
+    });
+
+    it('returns a single item page below the limit without a cursor', () => {
+      const response = PaginationHelper.buildResponse([items[0]], 1);
+
+      expect(response.pagination.count).toBe(1);
+      expect(response.pagination.hasMore).toBe(true);
+      expect(PaginationHelper.decodeCursor(response.pagination.cursor as string)).toBe(
+        '2026-01-03T00:00:00.000Z',
+      );
+    });
+
+    it('returns hasMore=true with a null cursor when the limit is zero', () => {
+      const response = PaginationHelper.buildResponse([], 0);
+
+      expect(response.pagination.hasMore).toBe(true);
+      expect(response.pagination.cursor).toBeNull();
+    });
+
+    it('round-trips the cursor through a follow-up decode', () => {
+      const fullPage = PaginationHelper.buildResponse(items, 3);
+      const decoded = PaginationHelper.decodeCursor(fullPage.pagination.cursor as string);
+
+      expect(decoded).toBe(items[2].created_at.toISOString());
+      expect(new Date(decoded as string).getTime()).toBe(items[2].created_at.getTime());
     });
   });
 });

@@ -1,12 +1,19 @@
-import { ExecutionContext, CallHandler, Logger } from '@nestjs/common';
-import { of, throwError } from 'rxjs';
+import { CallHandler, ExecutionContext } from '@nestjs/common';
+import { firstValueFrom, Observable, of, throwError } from 'rxjs';
 import { LoggingInterceptor } from './logging.interceptor';
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+interface ContextOptions {
+  method?: string;
+  url?: string;
+  ip?: string;
+  statusCode?: number;
+}
 
-function buildContext(method = 'GET', url = '/gists', statusCode = 200): ExecutionContext {
-  const request = { method, url, ip: '127.0.0.1' };
+function mockContext(options: ContextOptions = {}): ExecutionContext {
+  const { method = 'GET', url = '/gists', ip = '127.0.0.1', statusCode = 200 } = options;
+  const request = { method, url, ip };
   const response = { statusCode };
+
   return {
     switchToHttp: () => ({
       getRequest: () => request,
@@ -15,178 +22,146 @@ function buildContext(method = 'GET', url = '/gists', statusCode = 200): Executi
   } as unknown as ExecutionContext;
 }
 
-function buildHandler(value: unknown = { ok: true }): CallHandler {
-  return { handle: jest.fn().mockReturnValue(of(value)) };
+function mockCallHandler(result: Observable<unknown>): jest.Mocked<CallHandler> {
+  return { handle: jest.fn().mockReturnValue(result) } as unknown as jest.Mocked<CallHandler>;
 }
-
-function buildErrorHandler(error: Error): CallHandler {
-  return { handle: jest.fn().mockReturnValue(throwError(() => error)) };
-}
-
-// ─── tests ────────────────────────────────────────────────────────────────────
 
 describe('LoggingInterceptor', () => {
   let interceptor: LoggingInterceptor;
-  let logSpy: jest.SpyInstance;
-  let warnSpy: jest.SpyInstance;
-  let errorSpy: jest.SpyInstance;
+  let loggerLog: jest.SpyInstance;
+  let loggerWarn: jest.SpyInstance;
+  let loggerError: jest.SpyInstance;
 
   beforeEach(() => {
     interceptor = new LoggingInterceptor();
-
-    logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
-    warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
-    errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+    loggerLog = jest.spyOn((interceptor as any).logger, 'log').mockImplementation(() => undefined);
+    loggerWarn = jest
+      .spyOn((interceptor as any).logger, 'warn')
+      .mockImplementation(() => undefined);
+    loggerError = jest
+      .spyOn((interceptor as any).logger, 'error')
+      .mockImplementation(() => undefined);
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
   });
 
-  // ─── handle() is called exactly once ──────────────────────────────────────
+  it('invokes callHandler.handle exactly once', async () => {
+    const next = mockCallHandler(of({ id: 'gist-1' }));
 
-  it('calls callHandler.handle() exactly once', (done) => {
-    const handler = buildHandler();
-    const ctx = buildContext();
+    const result = await firstValueFrom(interceptor.intercept(mockContext(), next));
 
-    interceptor.intercept(ctx, handler).subscribe({
-      complete: () => {
-        expect(handler.handle).toHaveBeenCalledTimes(1);
-        done();
-      },
+    expect(next.handle).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ id: 'gist-1' });
+  });
+
+  describe('health check short circuit', () => {
+    it('passes the response through without logging for /health', async () => {
+      const next = mockCallHandler(of({ status: 'ok' }));
+
+      const result = await firstValueFrom(
+        interceptor.intercept(mockContext({ url: '/health' }), next),
+      );
+
+      expect(result).toEqual({ status: 'ok' });
+      expect(next.handle).toHaveBeenCalledTimes(1);
+      expect(loggerLog).not.toHaveBeenCalled();
+      expect(loggerWarn).not.toHaveBeenCalled();
+      expect(loggerError).not.toHaveBeenCalled();
+    });
+
+    it('logs non-health paths as usual', async () => {
+      const next = mockCallHandler(of({ id: 1 }));
+
+      await firstValueFrom(interceptor.intercept(mockContext({ url: '/metrics' }), next));
+
+      expect(loggerLog).toHaveBeenCalledTimes(1);
+      expect(loggerLog).toHaveBeenCalledWith(
+        expect.stringMatching(/^GET \/metrics 200 \d+ms — 127\.0\.0\.1$/),
+      );
     });
   });
 
-  // ─── /health short-circuit ────────────────────────────────────────────────
+  describe('success path', () => {
+    it('logs method, url, status, duration and ip through logger.log', async () => {
+      const next = mockCallHandler(of({ id: 'gist-1' }));
 
-  it('does not log anything for /health requests', (done) => {
-    const ctx = buildContext('GET', '/health');
-    const handler = buildHandler();
+      await firstValueFrom(
+        interceptor.intercept(mockContext({ method: 'POST', url: '/gists', ip: '10.0.0.1' }), next),
+      );
 
-    interceptor.intercept(ctx, handler).subscribe({
-      complete: () => {
-        expect(logSpy).not.toHaveBeenCalled();
-        expect(warnSpy).not.toHaveBeenCalled();
-        expect(errorSpy).not.toHaveBeenCalled();
-        done();
-      },
+      expect(loggerLog).toHaveBeenCalledTimes(1);
+      expect(loggerLog).toHaveBeenCalledWith(
+        expect.stringMatching(/^POST \/gists 200 \d+ms — 10\.0\.0\.1$/),
+      );
+      expect(loggerWarn).not.toHaveBeenCalled();
+      expect(loggerError).not.toHaveBeenCalled();
+    });
+
+    it('reports the elapsed time from Date.now()', async () => {
+      const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1000);
+      nowSpy.mockReturnValueOnce(1000).mockReturnValueOnce(1042);
+      const next = mockCallHandler(of({ id: 'gist-1' }));
+
+      await firstValueFrom(interceptor.intercept(mockContext(), next));
+
+      expect(loggerLog).toHaveBeenCalledWith('GET /gists 200 42ms — 127.0.0.1');
+    });
+
+    it('logs 4xx responses through logger.warn', async () => {
+      const next = mockCallHandler(of({ statusCode: 404 }));
+
+      await firstValueFrom(interceptor.intercept(mockContext({ statusCode: 404 }), next));
+
+      expect(loggerWarn).toHaveBeenCalledTimes(1);
+      expect(loggerWarn).toHaveBeenCalledWith(
+        expect.stringMatching(/^GET \/gists 404 \d+ms — 127\.0\.0\.1$/),
+      );
+      expect(loggerLog).not.toHaveBeenCalled();
+      expect(loggerError).not.toHaveBeenCalled();
+    });
+
+    it('logs 5xx responses through logger.error', async () => {
+      const next = mockCallHandler(of({ statusCode: 500 }));
+
+      await firstValueFrom(interceptor.intercept(mockContext({ statusCode: 500 }), next));
+
+      expect(loggerError).toHaveBeenCalledTimes(1);
+      expect(loggerError).toHaveBeenCalledWith(
+        expect.stringMatching(/^GET \/gists 500 \d+ms — 127\.0\.0\.1$/),
+      );
+      expect(loggerLog).not.toHaveBeenCalled();
+      expect(loggerWarn).not.toHaveBeenCalled();
     });
   });
 
-  it('does not log for paths starting with /health (e.g. /health/liveness)', (done) => {
-    const ctx = buildContext('GET', '/health/liveness');
-    const handler = buildHandler();
+  describe('error path', () => {
+    it('logs the failure through logger.error and rethrows', async () => {
+      const next = mockCallHandler(throwError(() => new Error('db down')));
 
-    interceptor.intercept(ctx, handler).subscribe({
-      complete: () => {
-        expect(logSpy).not.toHaveBeenCalled();
-        done();
-      },
+      await expect(firstValueFrom(interceptor.intercept(mockContext(), next))).rejects.toThrow(
+        'db down',
+      );
+
+      expect(loggerError).toHaveBeenCalledTimes(1);
+      expect(loggerError).toHaveBeenCalledWith(
+        expect.stringMatching(/^GET \/gists ERROR \d+ms — db down$/),
+      );
+      expect(loggerLog).not.toHaveBeenCalled();
+      expect(loggerWarn).not.toHaveBeenCalled();
     });
-  });
 
-  // ─── 2xx → logger.log ─────────────────────────────────────────────────────
+    it('still measures the duration of a failing handler', async () => {
+      const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(5000);
+      nowSpy.mockReturnValueOnce(5000).mockReturnValueOnce(5015);
+      const next = mockCallHandler(throwError(() => new Error('timeout')));
 
-  it('calls logger.log for 200 responses', (done) => {
-    const ctx = buildContext('GET', '/gists', 200);
-    const handler = buildHandler();
+      await expect(firstValueFrom(interceptor.intercept(mockContext(), next))).rejects.toThrow(
+        'timeout',
+      );
 
-    interceptor.intercept(ctx, handler).subscribe({
-      complete: () => {
-        expect(logSpy).toHaveBeenCalledTimes(1);
-        expect(warnSpy).not.toHaveBeenCalled();
-        expect(errorSpy).not.toHaveBeenCalled();
-        done();
-      },
-    });
-  });
-
-  it('log line includes method, url, status and duration', (done) => {
-    const ctx = buildContext('POST', '/gists', 201);
-    const handler = buildHandler();
-
-    interceptor.intercept(ctx, handler).subscribe({
-      complete: () => {
-        const logLine = logSpy.mock.calls[0][0] as string;
-        expect(logLine).toContain('POST');
-        expect(logLine).toContain('/gists');
-        expect(logLine).toContain('201');
-        expect(logLine).toMatch(/\d+ms/);
-        done();
-      },
-    });
-  });
-
-  // ─── 4xx → logger.warn ────────────────────────────────────────────────────
-
-  it('calls logger.warn for 400 responses', (done) => {
-    const ctx = buildContext('POST', '/gists', 400);
-    const handler = buildHandler();
-
-    interceptor.intercept(ctx, handler).subscribe({
-      complete: () => {
-        expect(warnSpy).toHaveBeenCalledTimes(1);
-        expect(logSpy).not.toHaveBeenCalled();
-        done();
-      },
-    });
-  });
-
-  it('calls logger.warn for 404 responses', (done) => {
-    const ctx = buildContext('GET', '/gists/404', 404);
-    const handler = buildHandler();
-
-    interceptor.intercept(ctx, handler).subscribe({
-      complete: () => {
-        expect(warnSpy).toHaveBeenCalledTimes(1);
-        done();
-      },
-    });
-  });
-
-  // ─── 5xx → logger.error ───────────────────────────────────────────────────
-
-  it('calls logger.error for 500 responses', (done) => {
-    const ctx = buildContext('GET', '/gists', 500);
-    const handler = buildHandler();
-
-    interceptor.intercept(ctx, handler).subscribe({
-      complete: () => {
-        expect(errorSpy).toHaveBeenCalledTimes(1);
-        expect(logSpy).not.toHaveBeenCalled();
-        done();
-      },
-    });
-  });
-
-  // ─── handler throws → error tap ───────────────────────────────────────────
-
-  it('calls logger.error via error tap when the handler throws', (done) => {
-    const ctx = buildContext('POST', '/gists', 500);
-    const handler = buildErrorHandler(new Error('DB exploded'));
-
-    interceptor.intercept(ctx, handler).subscribe({
-      error: () => {
-        expect(errorSpy).toHaveBeenCalledTimes(1);
-        const logLine = errorSpy.mock.calls[0][0] as string;
-        expect(logLine).toContain('ERROR');
-        expect(logLine).toContain('DB exploded');
-        done();
-      },
-    });
-  });
-
-  it('error tap log includes method and url', (done) => {
-    const ctx = buildContext('DELETE', '/gists/1', 500);
-    const handler = buildErrorHandler(new Error('not found'));
-
-    interceptor.intercept(ctx, handler).subscribe({
-      error: () => {
-        const logLine = errorSpy.mock.calls[0][0] as string;
-        expect(logLine).toContain('DELETE');
-        expect(logLine).toContain('/gists/1');
-        done();
-      },
+      expect(loggerError).toHaveBeenCalledWith('GET /gists ERROR 15ms — timeout');
     });
   });
 });
