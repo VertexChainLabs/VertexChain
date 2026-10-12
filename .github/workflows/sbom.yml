@@ -112,7 +112,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate CycloneDX SBOM
-        uses: anchore/sbom-action@v0.24.2
+        uses: anchore/sbom-action@v0.24.3
         with:
           # image:tag form. anchore/sbom-action pulls the image, runs
           # syft against its filesystem layer, and emits CycloneDX JSON.
